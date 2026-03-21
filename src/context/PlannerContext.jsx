@@ -431,7 +431,7 @@ export function PlannerProvider({ children }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Write to Firestore on state changes (debounced 1.5s, skips remote echoes)
+  // Write to Firestore on state changes (debounced 800ms, skips remote echoes)
   useEffect(() => {
     if (!db) return;
     if (!readyToWriteRef.current) return; // wait for first snapshot
@@ -442,17 +442,23 @@ export function PlannerProvider({ children }) {
     setSyncStatus('syncing');
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      setDoc(doc(db, 'planner', 'main'), {
-        targets_pre: targetsPre,
-        targets_crunch: targetsCrunch,
-        cal_pre: calPre,
-        cal_crunch: calCrunch,
-        school: schoolDays,
-        mode,
-      })
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore write timed out')), 8000)
+      );
+      Promise.race([
+        setDoc(doc(db, 'planner', 'main'), {
+          targets_pre: targetsPre,
+          targets_crunch: targetsCrunch,
+          cal_pre: calPre,
+          cal_crunch: calCrunch,
+          school: schoolDays,
+          mode,
+        }),
+        timeout,
+      ])
         .then(() => setSyncStatus('synced'))
         .catch((e) => { console.warn('Firestore write failed:', e); setSyncStatus('error'); });
-    }, 1500);
+    }, 800);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetsPre, targetsCrunch, calPre, calCrunch, schoolDays, mode]);
 
