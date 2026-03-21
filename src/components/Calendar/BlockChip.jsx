@@ -21,11 +21,23 @@ function fmt24(t) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-// Quick-tap time presets — the most common study times
-const TIME_PRESETS = [
-  '07:00','08:00','09:00','10:00','11:00','12:00',
-  '13:00','14:00','15:00','15:30','16:00','16:30',
-  '17:00','18:00','19:00','20:00','21:00','22:00',
+const TIME_SECTIONS = [
+  {
+    label: 'Morning',
+    times: ['06:00','07:00','08:00','09:00','10:00','11:00'],
+  },
+  {
+    label: 'Afternoon',
+    times: ['12:00','13:00','14:00','15:00','15:30','16:00','16:30','17:00','17:30'],
+  },
+  {
+    label: 'Evening',
+    times: ['18:00','19:00','20:00','21:00','22:00','23:00'],
+  },
+  {
+    label: 'Late night',
+    times: ['00:00','01:00','02:00','03:00'],
+  },
 ];
 
 function TimePopover({ current, onSelect, onClear, onClose }) {
@@ -35,30 +47,34 @@ function TimePopover({ current, onSelect, onClear, onClose }) {
     function handleClick(e) {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }
-    // small delay so the opening click doesn't immediately close it
     const t = setTimeout(() => document.addEventListener('mousedown', handleClick), 50);
     return () => { clearTimeout(t); document.removeEventListener('mousedown', handleClick); };
   }, [onClose]);
 
   return (
     <div className="time-popover" ref={ref} onClick={(e) => e.stopPropagation()}>
-      <div className="time-popover-grid">
-        {TIME_PRESETS.map(t => (
-          <button
-            key={t}
-            className={`time-preset-btn ${current === t ? 'active' : ''}`}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(t); }}
-          >
-            {fmt24(t)}
-          </button>
-        ))}
-      </div>
+      {TIME_SECTIONS.map(section => (
+        <div key={section.label} className="time-section">
+          <div className="time-section-label">{section.label}</div>
+          <div className="time-popover-grid">
+            {section.times.map(t => (
+              <button
+                key={t}
+                className={`time-preset-btn ${current === t ? 'active' : ''}`}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(t); }}
+              >
+                {fmt24(t)}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
       {current && (
         <button
           className="time-clear-btn"
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}
         >
-          ✕ clear time
+          ✕ remove time
         </button>
       )}
     </div>
