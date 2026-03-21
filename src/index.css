@@ -473,19 +473,21 @@ input  { font-family: var(--mono); }
 
 .week-row {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
+  align-items: stretch;
 }
 
 /* ── Day cell ─────────────────────────────────────────────────────────────── */
 .day-cell-empty {
   background: rgba(17,17,22,0.4);
-  min-height: 140px;
+  min-height: 130px;
 }
 
 .day-cell {
   background: var(--s1);
-  min-height: 140px;
+  min-height: 130px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -686,31 +688,78 @@ input  { font-family: var(--mono); }
   color: var(--t1); outline:none;
 }
 
-/* Time button */
+/* ── Time button ── */
 .time-btn {
   font-family: var(--mono); font-size:10px;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.25);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 3px; padding:2px 4px;
   cursor: pointer; transition: all 0.12s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
-.time-btn:hover { color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.12); }
+.block-chip:hover .time-btn { color: rgba(255,255,255,0.55); }
+.time-btn:hover { color:rgba(255,255,255,0.8) !important; border-color:rgba(255,255,255,0.12); }
 .time-btn.has-time {
   color: var(--accent-l);
   background: var(--accent-glow);
   border-color: var(--accent-ring);
 }
-.time-input {
-  font-family: var(--mono); font-size:9px;
-  width: 80px;
-  background: rgba(0,0,0,0.4);
-  border: 1px solid var(--accent-l);
-  border-radius: 3px; padding:1px 4px;
-  color: var(--t1); outline:none;
-  color-scheme: dark;
+
+/* ── Time popover ── */
+.time-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--s3);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-lg);
+  padding: 8px;
+  z-index: 500;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  min-width: 210px;
+  animation: fadeUp 0.12s var(--ease);
 }
+
+.time-popover-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+}
+
+.time-preset-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--t2);
+  background: var(--s4);
+  border: 1px solid var(--bd1);
+  border-radius: 4px;
+  padding: 5px 2px;
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+  text-align: center;
+}
+.time-preset-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.time-preset-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.time-clear-btn {
+  width: 100%;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t3);
+  background: transparent;
+  border: 1px solid var(--bd1);
+  border-radius: 4px;
+  padding: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: center;
+}
+.time-clear-btn:hover { color: var(--red); border-color: rgba(244,63,94,0.3); background: var(--red-dim); }
 
 .chip-delete {
   flex-shrink: 0;
@@ -727,38 +776,39 @@ input  { font-family: var(--mono); }
 
 /* ── Desktop responsive ───────────────────────────────────────────────────── */
 @media (max-width: 1380px) {
-  :root { --sw: 255px; }
-  .block-chip { padding: 5px 6px 5px 8px; }
-  .chip-subject { font-size:11px; }
+  :root { --sw: 252px; }
   .chip-paper-label { font-size:9px; }
+  .gcal-btn { font-size:10px; padding: 3px 8px; }
 }
 @media (max-width: 1200px) {
-  :root { --sw: 240px; }
-  .day-cell { min-height: 120px; }
-  .block-chip { padding: 4px 5px 4px 7px; gap:4px; }
-  .chip-subject { font-size:10px; }
+  :root { --sw: 238px; }
+  .block-chip { padding: 5px 5px 5px 7px; gap:4px; }
+  .chip-subject { font-size:11px; }
   .chip-paper-label { font-size:9px; }
   .day-num { font-size: 16px; }
-  .cal-header-cell { font-size:10px; padding:8px 6px; }
+  .cal-header-cell { font-size:10px; padding:8px 5px; }
   .gcal-btn { display:none; }
+  .time-btn { display:none; }
 }
 @media (max-width: 1100px) {
-  :root { --sw: 225px; }
-  .day-num { font-size: 14px; }
-  .cal-header-cell { font-size:9px; padding:7px 5px; }
-  .day-cell { min-height: 110px; }
-  .day-cell-header { padding: 7px 7px 4px; }
+  :root { --sw: 222px; }
+  .block-chip { padding: 4px 4px 4px 6px; gap:3px; }
+  .day-num { font-size: 15px; }
+  .cal-header-cell { font-size:9px; padding:7px 4px; }
+  .day-cell-header { padding: 7px 6px 4px; }
+  .dur-btn { font-size: 9px; padding: 1px 3px; }
 }
 @media (max-width: 960px) {
-  :root { --sw: 205px; }
-  .block-chip { padding: 3px 4px 3px 6px; gap:3px; }
-  .chip-subject { font-size:9px; }
+  :root { --sw: 200px; }
+  .block-chip { padding: 3px 3px 3px 5px; gap:3px; }
+  .chip-subject { font-size:10px; }
   .chip-paper-label { display:none; }
   .dur-btn { display:none; }
+  .day-cell-header { padding: 6px 5px 3px; }
 }
 @media (max-width: 860px) {
   .header-stats, .header-progress-bar, .progress-pct { display:none; }
-  :root { --sw: 195px; }
+  :root { --sw: 190px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -940,17 +990,18 @@ input  { font-family: var(--mono); }
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 1px;
-    padding: 6px 9px;
+    gap: 2px;
+    padding: 7px 10px;
     border: 1px solid;
+    border-left: 3px solid;
     border-radius: var(--r);
     cursor: grab;
     white-space: nowrap;
     flex-shrink: 0;
-    min-width: 70px;
+    min-width: 74px;
     transition: all 0.12s;
   }
-  .mobile-strip-chip.dragging { opacity:0.8; box-shadow:0 8px 24px rgba(0,0,0,0.5); cursor:grabbing; transform:scale(1.05); }
+  .mobile-strip-chip.dragging { opacity:0.85; box-shadow:0 8px 24px rgba(0,0,0,0.5); cursor:grabbing; transform:scale(1.05); }
 
   /* Day list */
   .mobile-day-list {

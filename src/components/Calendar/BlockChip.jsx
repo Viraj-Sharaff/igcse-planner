@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
 import { usePlanner } from '../../context/PlannerContext';
 import { PAPER_MAP, TUTOR_MAP } from '../../data/subjects';
@@ -14,20 +14,62 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Format "HH:MM" (24h) → "4:30 PM"
 function fmt24(t) {
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12  = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+// Quick-tap time presets — the most common study times
+const TIME_PRESETS = [
+  '07:00','08:00','09:00','10:00','11:00','12:00',
+  '13:00','14:00','15:00','15:30','16:00','16:30',
+  '17:00','18:00','19:00','20:00','21:00','22:00',
+];
+
+function TimePopover({ current, onSelect, onClear, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }
+    // small delay so the opening click doesn't immediately close it
+    const t = setTimeout(() => document.addEventListener('mousedown', handleClick), 50);
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', handleClick); };
+  }, [onClose]);
+
+  return (
+    <div className="time-popover" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div className="time-popover-grid">
+        {TIME_PRESETS.map(t => (
+          <button
+            key={t}
+            className={`time-preset-btn ${current === t ? 'active' : ''}`}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(t); }}
+          >
+            {fmt24(t)}
+          </button>
+        ))}
+      </div>
+      {current && (
+        <button
+          className="time-clear-btn"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}
+        >
+          ✕ clear time
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function BlockChip({ block, dateKey, index }) {
   const { toggleDone, updateDuration, updateStartTime, removeBlock } = usePlanner();
   const [editingDur,  setEditingDur]  = useState(false);
   const [durInput,    setDurInput]    = useState(String(block.duration));
-  const [editingTime, setEditingTime] = useState(false);
+  const [showTimePop, setShowTimePop] = useState(false);
 
   const color = block.isTutor
     ? (TUTOR_MAP[block.tutorId]?.color || '#555')
@@ -52,11 +94,6 @@ export default function BlockChip({ block, dateKey, index }) {
   function handleDurKey(e) {
     if (e.key === 'Enter')  commitDuration();
     if (e.key === 'Escape') { setDurInput(String(block.duration)); setEditingDur(false); }
-  }
-
-  function commitTime(e) {
-    updateStartTime(dateKey, block.instanceId, e.target.value || null);
-    setEditingTime(false);
   }
 
   return (
@@ -92,26 +129,23 @@ export default function BlockChip({ block, dateKey, index }) {
               )}
             </div>
 
-            <div className="chip-meta">
-              {/* ── Time button ── */}
-              {editingTime ? (
-                <input
-                  type="time"
-                  className="time-input"
-                  defaultValue={block.startTime || ''}
-                  onBlur={commitTime}
-                  onChange={commitTime}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
+            <div className="chip-meta" style={{ position: 'relative' }}>
+              {/* ── Time button + popover ── */}
+              <button
+                className={`time-btn ${block.startTime ? 'has-time' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setShowTimePop(v => !v); }}
+                title={block.startTime ? 'Change start time' : 'Set start time'}
+              >
+                {block.startTime ? fmt24(block.startTime) : '⊕'}
+              </button>
+
+              {showTimePop && (
+                <TimePopover
+                  current={block.startTime || null}
+                  onSelect={(t) => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
+                  onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
+                  onClose={() => setShowTimePop(false)}
                 />
-              ) : (
-                <button
-                  className={`time-btn ${block.startTime ? 'has-time' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); setEditingTime(true); }}
-                  title={block.startTime ? 'Change start time' : 'Set start time (optional)'}
-                >
-                  {block.startTime ? fmt24(block.startTime) : '⊕'}
-                </button>
               )}
 
               {/* ── Duration button ── */}

@@ -18,18 +18,20 @@ function hexToRgba(hex, alpha) {
 function PoolStrip() {
   const { SUBJECTS, TUTORS, getPoolCount } = usePlanner();
 
+  // One chip per paper type with count badge — same as desktop sidebar
   const paperItems = [];
   SUBJECTS.forEach(s => s.papers.forEach(p => {
     const count = getPoolCount(p.id);
-    for (let i = 0; i < count; i++) {
+    if (count > 0) {
       paperItems.push({
-        draggableId: `pool-paper-${p.id}-${i}`,
+        draggableId: `pool-paper-${p.id}-0`,
         paperId: p.id,
         name: s.shortName,
         label: p.label.replace('Paper ','P').replace('Study Session','Sess.'),
         duration: p.duration,
         color: s.color,
         isTutor: false,
+        count,
       });
     }
   }));
@@ -78,14 +80,23 @@ function PoolStrip() {
                       {...provided.dragHandleProps}
                       style={{
                         background: hexToRgba(item.color, 0.12),
-                        borderColor: hexToRgba(item.color, 0.3),
+                        borderColor: hexToRgba(item.color, 0.35),
+                        borderLeftColor: item.color,
                         ...provided.draggableProps.style,
                       }}
                     >
-                      <span style={{ color: item.color, fontWeight: 700, fontSize: 10 }}>{item.name}</span>
-                      <span style={{ color: 'var(--t3)', fontSize: 9, fontFamily: 'var(--mono)' }}>
+                      <span style={{ color: item.color, fontWeight: 700, fontSize: 11 }}>{item.name}</span>
+                      <span style={{ color: 'var(--t3)', fontSize: 10, fontFamily: 'var(--mono)' }}>
                         {item.label} · {item.duration}m
                       </span>
+                      {item.count > 1 && (
+                        <span style={{
+                          fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 700,
+                          color: 'var(--accent-l)', background: 'var(--accent-glow)',
+                          border: '1px solid var(--accent-ring)',
+                          borderRadius: 99, padding: '0 5px', marginTop: 1,
+                        }}>×{item.count}</span>
+                      )}
                     </div>
                   )}
                 </Draggable>
@@ -112,12 +123,13 @@ function PoolStrip() {
                       {...provided.dragHandleProps}
                       style={{
                         background: hexToRgba(item.color, 0.12),
-                        borderColor: hexToRgba(item.color, 0.3),
+                        borderColor: hexToRgba(item.color, 0.35),
+                        borderLeftColor: item.color,
                         ...provided.draggableProps.style,
                       }}
                     >
-                      <span style={{ color: item.color, fontWeight: 700, fontSize: 10 }}>{item.name}</span>
-                      <span style={{ color: 'var(--t3)', fontSize: 9, fontFamily: 'var(--mono)' }}>
+                      <span style={{ color: item.color, fontWeight: 700, fontSize: 11 }}>{item.name}</span>
+                      <span style={{ color: 'var(--t3)', fontSize: 10, fontFamily: 'var(--mono)' }}>
                         TUTOR · {item.duration}m
                       </span>
                     </div>
