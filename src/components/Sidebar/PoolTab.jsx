@@ -20,16 +20,20 @@ function PoolChip({ item, index }) {
             ...provided.draggableProps.style,
           }}
         >
-          <span
-            className="chip-dot"
-            style={{ backgroundColor: color }}
-          />
-          <span className="chip-name">{item.name}</span>
-          {item.label && item.label !== item.name && (
-            <span className="chip-label">{item.label}</span>
-          )}
-          <span className="chip-dur">{item.duration}m</span>
-          {item.isTutor && <span className="tutor-badge">tutor</span>}
+          <span className="chip-dot" style={{ backgroundColor: color }} />
+          <div className="chip-text-block">
+            <span className="chip-name">{item.name}</span>
+            {item.label && item.label !== item.name && (
+              <span className="chip-label">{item.label}</span>
+            )}
+          </div>
+          <div className="chip-right">
+            <span className="chip-dur">{item.duration}m</span>
+            {item.isTutor && <span className="tutor-badge">tutor</span>}
+            {item.count > 1 && (
+              <span className="chip-count">×{item.count}</span>
+            )}
+          </div>
         </div>
       )}
     </Draggable>
@@ -39,19 +43,20 @@ function PoolChip({ item, index }) {
 export default function PoolTab() {
   const { SUBJECTS, TUTORS, getPoolCount } = usePlanner();
 
-  // Build flat list of pool paper chips
+  // One chip per paper type, with count badge — always drag from index 0
   const paperItems = [];
   SUBJECTS.forEach((subject) => {
     subject.papers.forEach((paper) => {
       const count = getPoolCount(paper.id);
-      for (let i = 0; i < count; i++) {
+      if (count > 0) {
         paperItems.push({
-          draggableId: `pool-paper-${paper.id}-${i}`,
+          draggableId: `pool-paper-${paper.id}-0`,
           paperId: paper.id,
           name: subject.shortName,
           label: paper.label,
           duration: paper.duration,
           isTutor: false,
+          count,
         });
       }
     });
@@ -66,6 +71,7 @@ export default function PoolTab() {
     duration: tutor.duration,
     color: tutor.color,
     isTutor: true,
+    count: 1,
   }));
 
   return (
