@@ -59,10 +59,11 @@ export function useGoogleCalendar() {
 
   /**
    * Create a Google Calendar event for a study block.
-   * Uses accessTokenRef directly — no stale closure issue.
+   * - No startTime set → all-day event (just shows on the day, no time)
+   * - startTime set ("HH:MM" 24h) → timed event starting at that time
    * Returns the Google event ID or null.
    */
-  const createEvent = useCallback(async (dateKey, block, schoolDays) => {
+  const createEvent = useCallback(async (dateKey, block) => {
     const token = accessTokenRef.current;
     if (!token) {
       console.warn('[GCal] createEvent called but no access token');
@@ -70,32 +71,33 @@ export function useGoogleCalendar() {
     }
 
     const [year, month, day] = dateKey.split('-').map(Number);
-    const date    = new Date(year, month - 1, day);
-    const dow     = date.getDay();
-    const isWday  = dow >= 1 && dow <= 5;
-    const hasSchool = isWday
-      ? schoolDays[dateKey] !== false
-      : schoolDays[dateKey] === true;
-
-    let startHour = 9, startMin = 0;
-    if (hasSchool && isWday) {
-      startHour = (dow === 1 || dow === 3) ? 16 : 15;
-      startMin  = 30;
-    }
-
-    const start = new Date(year, month - 1, day, startHour, startMin);
-    const end   = new Date(start.getTime() + block.duration * 60 * 1000);
-    const tz    = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
     const title = block.isTutor
       ? `📚 Tutor — ${block.label}`
       : `📖 ${block.subjectName || 'Study'} — ${block.label}`;
 
+    let startField, endField;
+
+    if (block.startTime) {
+      // Timed event: user explicitly set a start time
+      const [h, m]  = block.startTime.split(':').map(Number);
+      const start   = new Date(year, month - 1, day, h, m);
+      const end     = new Date(start.getTime() + block.duration * 60 * 1000);
+      const tz      = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      startField    = { dateTime: start.toISOString(), timeZone: tz };
+      endField      = { dateTime: end.toISOString(),   timeZone: tz };
+    } else {
+      // All-day event — just the date, no time
+      const nextDay = new Date(year, month - 1, day + 1);
+      const fmt     = (d) => d.toISOString().slice(0, 10);
+      startField    = { date: fmt(new Date(year, month - 1, day)) };
+      endField      = { date: fmt(nextDay) };
+    }
+
     const body = {
       summary:     title,
-      description: `IGCSE Planner\nDuration: ${block.duration} min`,
-      start: { dateTime: start.toISOString(), timeZone: tz },
-      end:   { dateTime: end.toISOString(),   timeZone: tz },
+      description: `IGCSE Planner · ${block.duration} min`,
+      start:       startField,
+      end:         endField,
     };
 
     console.log('[GCal] Creating event:', title, 'on', dateKey);

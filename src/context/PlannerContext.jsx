@@ -238,7 +238,7 @@ export function PlannerProvider({ children }) {
     });
 
     toCreate.forEach(({ dateKey, block }) => {
-      gcal.createEvent(dateKey, block, schoolDays).then((googleEventId) => {
+      gcal.createEvent(dateKey, block).then((googleEventId) => {
         gcalProcessingRef.current.delete(block.instanceId);
         if (!googleEventId) return;
         // Write the event ID back onto the block so we can delete it later
@@ -255,7 +255,7 @@ export function PlannerProvider({ children }) {
     gcalPrevRef.current = curr;
   // gcal.connected triggers re-run when user connects so existing blocks get pushed
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendar, gcal.connected, schoolDays]);
+  }, [calendar, gcal.connected]);
 
   const toggleDone = useCallback(
     (dateKey, instanceId) => {
@@ -283,6 +283,26 @@ export function PlannerProvider({ children }) {
           [dateKey]: existing.map((b) =>
             b.instanceId === instanceId ? { ...b, duration: d } : b
           ),
+        };
+      });
+    },
+    [setCalendar]
+  );
+
+  const updateStartTime = useCallback(
+    (dateKey, instanceId, time) => {
+      // time is "HH:MM" (24h) or null to clear
+      setCalendar((prev) => {
+        const existing = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
+        return {
+          ...prev,
+          [dateKey]: existing.map((b) => {
+            if (b.instanceId !== instanceId) return b;
+            // Clear googleEventId so sync effect deletes old event and creates new one
+            // with the correct time (or as all-day if time is cleared)
+            const { googleEventId: _old, ...rest } = b;
+            return time ? { ...rest, startTime: time } : { ...rest, startTime: undefined };
+          }),
         };
       });
     },
@@ -460,6 +480,7 @@ export function PlannerProvider({ children }) {
     moveBlock,
     toggleDone,
     updateDuration,
+    updateStartTime,
     onDragEnd,
     syncStatus,
     gcal,

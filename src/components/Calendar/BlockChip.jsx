@@ -7,7 +7,6 @@ function shortLabel(label) {
   return label.replace('Paper ', 'P').replace('Study Session', 'Sess.');
 }
 
-// Convert hex color to rgba with given opacity
 function hexToRgba(hex, alpha) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -15,10 +14,20 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// Format "HH:MM" (24h) → "4:30 PM"
+function fmt24(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 export default function BlockChip({ block, dateKey, index }) {
-  const { toggleDone, updateDuration, removeBlock } = usePlanner();
-  const [editingDur, setEditingDur] = useState(false);
-  const [durInput, setDurInput]     = useState(String(block.duration));
+  const { toggleDone, updateDuration, updateStartTime, removeBlock } = usePlanner();
+  const [editingDur,  setEditingDur]  = useState(false);
+  const [durInput,    setDurInput]    = useState(String(block.duration));
+  const [editingTime, setEditingTime] = useState(false);
 
   const color = block.isTutor
     ? (TUTOR_MAP[block.tutorId]?.color || '#555')
@@ -29,8 +38,8 @@ export default function BlockChip({ block, dateKey, index }) {
     : PAPER_MAP[block.paperId]?.subject.shortName;
 
   const chipStyle = {
-    background:    hexToRgba(color, 0.08),
-    borderColor:   hexToRgba(color, 0.18),
+    background:      hexToRgba(color, 0.08),
+    borderColor:     hexToRgba(color, 0.18),
     borderLeftColor: color,
   };
 
@@ -40,10 +49,14 @@ export default function BlockChip({ block, dateKey, index }) {
     else setDurInput(String(block.duration));
     setEditingDur(false);
   }
-
   function handleDurKey(e) {
-    if (e.key === 'Enter') commitDuration();
+    if (e.key === 'Enter')  commitDuration();
     if (e.key === 'Escape') { setDurInput(String(block.duration)); setEditingDur(false); }
+  }
+
+  function commitTime(e) {
+    updateStartTime(dateKey, block.instanceId, e.target.value || null);
+    setEditingTime(false);
   }
 
   return (
@@ -80,6 +93,28 @@ export default function BlockChip({ block, dateKey, index }) {
             </div>
 
             <div className="chip-meta">
+              {/* ── Time button ── */}
+              {editingTime ? (
+                <input
+                  type="time"
+                  className="time-input"
+                  defaultValue={block.startTime || ''}
+                  onBlur={commitTime}
+                  onChange={commitTime}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <button
+                  className={`time-btn ${block.startTime ? 'has-time' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setEditingTime(true); }}
+                  title={block.startTime ? 'Change start time' : 'Set start time (optional)'}
+                >
+                  {block.startTime ? fmt24(block.startTime) : '⊕'}
+                </button>
+              )}
+
+              {/* ── Duration button ── */}
               {editingDur ? (
                 <input
                   className="dur-input"

@@ -686,6 +686,32 @@ input  { font-family: var(--mono); }
   color: var(--t1); outline:none;
 }
 
+/* Time button */
+.time-btn {
+  font-family: var(--mono); font-size:10px;
+  color: rgba(255,255,255,0.3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px; padding:2px 4px;
+  cursor: pointer; transition: all 0.12s;
+  white-space: nowrap;
+}
+.time-btn:hover { color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.12); }
+.time-btn.has-time {
+  color: var(--accent-l);
+  background: var(--accent-glow);
+  border-color: var(--accent-ring);
+}
+.time-input {
+  font-family: var(--mono); font-size:9px;
+  width: 80px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--accent-l);
+  border-radius: 3px; padding:1px 4px;
+  color: var(--t1); outline:none;
+  color-scheme: dark;
+}
+
 .chip-delete {
   flex-shrink: 0;
   width: 16px; height:16px;
