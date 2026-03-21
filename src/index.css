@@ -627,14 +627,13 @@ input  { font-family: var(--mono); }
   font-weight: 500;
 }
 
-/* ── Block chip ───────────────────────────────────────────────────────────── */
+/* ── Block chip — two-row layout ─────────────────────────────────────────── */
 .block-chip {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 5px;
   border-radius: 5px;
-  /* right padding reserves space for the absolute delete button */
-  padding: 5px 20px 5px 7px;
+  padding: 5px 18px 5px 7px; /* right gap for absolute delete */
   cursor: grab;
   border: 1px solid;
   border-left: 3px solid;
@@ -644,99 +643,98 @@ input  { font-family: var(--mono); }
   min-width: 0;
 }
 
-.block-chip:hover { filter:brightness(1.15); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.35); }
+.block-chip:hover { filter:brightness(1.12); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.35); }
 .block-chip.dragging { opacity:0.85; box-shadow:0 16px 48px rgba(0,0,0,0.7); cursor:grabbing; z-index:999; transform:scale(1.03) rotate(0.5deg); }
 .block-chip.done { opacity:0.35; filter:grayscale(0.4); }
-.block-chip.done .chip-title { text-decoration:line-through; }
+.block-chip.done .chip-row-name { text-decoration:line-through; }
 .block-chip.tutor-chip { border-left-style:dashed; }
 
 .chip-checkbox {
-  width: 13px; height:13px; flex-shrink:0;
+  width: 12px; height:12px; flex-shrink:0; margin-top:2px;
   accent-color: var(--green);
   cursor: pointer;
 }
 
-.chip-info {
-  flex: 1; min-width:0;
-  display: flex; align-items:center; justify-content:space-between; gap:3px;
+/* Two-row content area */
+.chip-main {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
 }
 
-.chip-title {
-  display: flex; align-items:center; gap:3px;
-  min-width: 0; flex:1; overflow:hidden;
+/* Row 1: name — gets the full width */
+.chip-row-name {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0;
 }
 
-.chip-subject { font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
-.chip-paper-label { font-family:var(--mono); font-size:10px; white-space:nowrap; flex-shrink:0; opacity:0.65; }
-.chip-tutor-name { font-size:12px; font-weight:700; }
+.chip-subject {
+  font-size: 12px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+
+/* Row 2: paper · duration · time — secondary, muted */
+.chip-row-meta {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0; flex-wrap: nowrap;
+}
+
+.chip-paper-label {
+  font-family: var(--mono); font-size: 9px;
+  color: var(--t3); white-space: nowrap; flex-shrink: 0;
+}
 
 .chip-tag { font-size:8px; font-family:var(--mono); border-radius:3px; padding:1px 4px; flex-shrink:0; }
 .tutor-tag { background:var(--accent-glow); color:var(--accent-l); }
 
-.chip-meta { flex-shrink:0; }
-
 .dur-btn {
-  font-family: var(--mono); font-size:10px;
-  color: rgba(255,255,255,0.45);
-  background: rgba(0,0,0,0.2);
-  border: 1px solid transparent;
-  border-radius: 3px; padding:2px 5px;
-  cursor: pointer; transition: all 0.12s;
-  white-space: nowrap;
+  font-family: var(--mono); font-size: 9px;
+  color: var(--t3);
+  background: transparent;
+  border: none;
+  border-radius: 3px; padding: 0 2px;
+  cursor: pointer; transition: color 0.12s;
+  white-space: nowrap; flex-shrink: 0;
 }
-.dur-btn:hover { color:rgba(255,255,255,0.8); border-color:rgba(255,255,255,0.15); }
+.dur-btn:hover { color: var(--t1); }
 
 .dur-input {
-  font-family: var(--mono); font-size:9px; width:36px;
+  font-family: var(--mono); font-size:9px; width:34px;
   background: rgba(0,0,0,0.3);
   border: 1px solid var(--accent-l);
-  border-radius: 3px; padding:1px 3px;
+  border-radius: 3px; padding:0 3px;
   color: var(--t1); outline:none;
 }
 
-/* ── Time button — collapses to zero when not active so name stays readable ── */
+/* ── Time button — lives in row 2 so never competes with the name ── */
+.chip-time-wrap { position: relative; flex-shrink: 0; }
+
 .time-btn {
   font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
   border-radius: 3px;
   cursor: pointer;
-  transition: max-width 0.15s var(--ease), opacity 0.15s, padding 0.15s;
-  /* collapsed by default */
-  max-width: 0;
-  overflow: hidden;
-  padding: 0;
-  opacity: 0;
-  pointer-events: none;
   border: 1px solid transparent;
   background: transparent;
-  color: transparent;
+  padding: 0 2px;
+  /* hidden by default, show on hover or when set */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, color 0.12s;
+  color: var(--t4);
 }
-/* expand on hover (show ⊕) */
-.block-chip:hover .time-btn:not(.has-time) {
-  max-width: 22px;
-  opacity: 0.5;
-  pointer-events: auto;
-  padding: 2px 3px;
-  color: var(--t2);
-}
-.block-chip:hover .time-btn:not(.has-time):hover {
+.block-chip:hover .time-btn {
   opacity: 1;
-  color: var(--t1);
-  border-color: var(--bd2);
+  pointer-events: auto;
 }
-/* always visible when time is set */
+.time-btn:hover { color: var(--t2); }
 .time-btn.has-time {
-  max-width: 72px;
-  overflow: hidden;
   opacity: 1;
   pointer-events: auto;
-  padding: 2px 5px;
   color: var(--accent-l);
-  background: var(--accent-glow);
-  border-color: var(--accent-ring);
 }
 
 /* ── Time popover ── */
@@ -807,17 +805,16 @@ input  { font-family: var(--mono); }
 .time-clear-btn:hover { color: var(--red); border-color: rgba(244,63,94,0.3); background: var(--red-dim); }
 
 .chip-delete {
-  /* absolute so it doesn't steal space from the name */
   position: absolute;
-  right: 3px; top: 50%;
-  transform: translateY(-50%);
-  width: 15px; height: 15px;
-  font-size: 14px; line-height: 1;
-  color: rgba(255,255,255,0.3);
+  right: 2px; top: 4px;
+  width: 14px; height: 14px;
+  font-size: 13px; line-height: 1;
+  color: rgba(255,255,255,0.25);
   opacity: 0;
   transition: all 0.12s;
   display: flex; align-items:center; justify-content:center;
   border-radius: 3px;
+  background: transparent; border: none; cursor: pointer;
 }
 .block-chip:hover .chip-delete { opacity:1; }
 .chip-delete:hover { color:var(--red); background:var(--red-dim); }
@@ -825,38 +822,30 @@ input  { font-family: var(--mono); }
 /* ── Desktop responsive ───────────────────────────────────────────────────── */
 @media (max-width: 1380px) {
   :root { --sw: 252px; }
-  .chip-paper-label { font-size:9px; }
   .gcal-btn { font-size:10px; padding: 3px 8px; }
 }
 @media (max-width: 1200px) {
   :root { --sw: 238px; }
-  .block-chip { padding: 5px 5px 5px 7px; gap:4px; }
-  .chip-subject { font-size:11px; }
-  .chip-paper-label { font-size:9px; }
   .day-num { font-size: 16px; }
   .cal-header-cell { font-size:10px; padding:8px 5px; }
   .gcal-btn { display:none; }
-  .time-btn { display:none; }
 }
 @media (max-width: 1100px) {
-  :root { --sw: 222px; }
-  .block-chip { padding: 4px 4px 4px 6px; gap:3px; }
+  :root { --sw: 220px; }
   .day-num { font-size: 15px; }
   .cal-header-cell { font-size:9px; padding:7px 4px; }
-  .day-cell-header { padding: 7px 6px 4px; }
-  .dur-btn { font-size: 9px; padding: 1px 3px; }
+  .day-cell-header { padding: 6px 6px 4px; }
+  .chip-subject { font-size: 11px; }
 }
 @media (max-width: 960px) {
-  :root { --sw: 200px; }
-  .block-chip { padding: 3px 3px 3px 5px; gap:3px; }
-  .chip-subject { font-size:10px; }
-  .chip-paper-label { display:none; }
-  .dur-btn { display:none; }
-  .day-cell-header { padding: 6px 5px 3px; }
+  :root { --sw: 198px; }
+  .chip-subject { font-size: 10px; }
+  .chip-row-meta { display: none; } /* hide secondary row on very narrow */
+  .day-cell-header { padding: 5px 5px 3px; }
 }
 @media (max-width: 860px) {
   .header-stats, .header-progress-bar, .progress-pct { display:none; }
-  :root { --sw: 190px; }
+  :root { --sw: 188px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -22,46 +22,34 @@ function fmt24(t) {
 }
 
 const TIME_SECTIONS = [
-  {
-    label: 'Morning',
-    times: ['06:00','07:00','08:00','09:00','10:00','11:00'],
-  },
-  {
-    label: 'Afternoon',
-    times: ['12:00','13:00','14:00','15:00','15:30','16:00','16:30','17:00','17:30'],
-  },
-  {
-    label: 'Evening',
-    times: ['18:00','19:00','20:00','21:00','22:00','23:00'],
-  },
-  {
-    label: 'Late night',
-    times: ['00:00','01:00','02:00','03:00'],
-  },
+  { label: 'Morning',    times: ['06:00','07:00','08:00','09:00','10:00','11:00'] },
+  { label: 'Afternoon',  times: ['12:00','13:00','14:00','15:00','15:30','16:00','16:30','17:00','17:30'] },
+  { label: 'Evening',    times: ['18:00','19:00','20:00','21:00','22:00','23:00'] },
+  { label: 'Late night', times: ['00:00','01:00','02:00','03:00'] },
 ];
 
 function TimePopover({ current, onSelect, onClear, onClose }) {
   const ref = useRef(null);
-
   useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }
-    const t = setTimeout(() => document.addEventListener('mousedown', handleClick), 50);
-    return () => { clearTimeout(t); document.removeEventListener('mousedown', handleClick); };
+    const t = setTimeout(() => {
+      function h(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+      document.addEventListener('mousedown', h);
+      return () => document.removeEventListener('mousedown', h);
+    }, 50);
+    return () => clearTimeout(t);
   }, [onClose]);
 
   return (
-    <div className="time-popover" ref={ref} onClick={(e) => e.stopPropagation()}>
-      {TIME_SECTIONS.map(section => (
-        <div key={section.label} className="time-section">
-          <div className="time-section-label">{section.label}</div>
+    <div className="time-popover" ref={ref} onClick={e => e.stopPropagation()}>
+      {TIME_SECTIONS.map(s => (
+        <div key={s.label} className="time-section">
+          <div className="time-section-label">{s.label}</div>
           <div className="time-popover-grid">
-            {section.times.map(t => (
+            {s.times.map(t => (
               <button
                 key={t}
                 className={`time-preset-btn ${current === t ? 'active' : ''}`}
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(t); }}
+                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onSelect(t); }}
               >
                 {fmt24(t)}
               </button>
@@ -70,10 +58,7 @@ function TimePopover({ current, onSelect, onClear, onClose }) {
         </div>
       ))}
       {current && (
-        <button
-          className="time-clear-btn"
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}
-        >
+        <button className="time-clear-btn" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onClear(); }}>
           ✕ remove time
         </button>
       )}
@@ -91,13 +76,13 @@ export default function BlockChip({ block, dateKey, index }) {
     ? (TUTOR_MAP[block.tutorId]?.color || '#555')
     : (PAPER_MAP[block.paperId]?.subject.color || '#555');
 
-  const subjectShort = block.isTutor
-    ? null
-    : PAPER_MAP[block.paperId]?.subject.shortName;
+  const subjectName = block.isTutor
+    ? block.label
+    : PAPER_MAP[block.paperId]?.subject.shortName || '';
 
   const chipStyle = {
     background:      hexToRgba(color, 0.08),
-    borderColor:     hexToRgba(color, 0.18),
+    borderColor:     hexToRgba(color, 0.2),
     borderLeftColor: color,
   };
 
@@ -106,10 +91,6 @@ export default function BlockChip({ block, dateKey, index }) {
     if (d > 0) updateDuration(dateKey, block.instanceId, d);
     else setDurInput(String(block.duration));
     setEditingDur(false);
-  }
-  function handleDurKey(e) {
-    if (e.key === 'Enter')  commitDuration();
-    if (e.key === 'Escape') { setDurInput(String(block.duration)); setEditingDur(false); }
   }
 
   return (
@@ -122,78 +103,81 @@ export default function BlockChip({ block, dateKey, index }) {
           {...provided.dragHandleProps}
           style={{ ...chipStyle, ...provided.draggableProps.style }}
         >
+          {/* Checkbox top-left */}
           <input
             type="checkbox"
             className="chip-checkbox"
             checked={block.done}
             onChange={() => toggleDone(dateKey, block.instanceId)}
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           />
 
-          <div className="chip-info">
-            <div className="chip-title">
+          {/* Two-row main content */}
+          <div className="chip-main">
+            {/* Row 1: subject/tutor name — gets full width */}
+            <div className="chip-row-name">
               {block.isTutor ? (
-                <>
-                  <span className="chip-tutor-name" style={{ color }}>{block.label}</span>
-                  <span className="chip-tag tutor-tag">TUTOR</span>
-                </>
+                <span className="chip-subject" style={{ color }}>{block.label}</span>
               ) : (
-                <>
-                  <span className="chip-subject" style={{ color }}>{subjectShort}</span>
-                  <span className="chip-paper-label">{shortLabel(block.label)}</span>
-                </>
+                <span className="chip-subject" style={{ color }}>{subjectName}</span>
               )}
+              {block.isTutor && <span className="chip-tag tutor-tag">TUTOR</span>}
             </div>
 
-            <div className="chip-meta" style={{ position: 'relative' }}>
-              {/* ── Time button + popover ── */}
-              <button
-                className={`time-btn ${block.startTime ? 'has-time' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setShowTimePop(v => !v); }}
-                title={block.startTime ? 'Change start time' : 'Set start time'}
-              >
-                {block.startTime ? fmt24(block.startTime) : '⊕'}
-              </button>
-
-              {showTimePop && (
-                <TimePopover
-                  current={block.startTime || null}
-                  onSelect={(t) => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
-                  onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
-                  onClose={() => setShowTimePop(false)}
-                />
+            {/* Row 2: paper · duration · time */}
+            <div className="chip-row-meta">
+              {!block.isTutor && (
+                <span className="chip-paper-label">{shortLabel(block.label)}</span>
               )}
 
-              {/* ── Duration button ── */}
               {editingDur ? (
                 <input
                   className="dur-input"
                   value={durInput}
-                  onChange={(e) => setDurInput(e.target.value)}
+                  onChange={e => setDurInput(e.target.value)}
                   onBlur={commitDuration}
-                  onKeyDown={handleDurKey}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitDuration();
+                    if (e.key === 'Escape') { setDurInput(String(block.duration)); setEditingDur(false); }
+                  }}
                   autoFocus
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
                 />
               ) : (
                 <button
                   className="dur-btn"
-                  onClick={(e) => { e.stopPropagation(); setDurInput(String(block.duration)); setEditingDur(true); }}
-                  title="Edit duration"
+                  onClick={e => { e.stopPropagation(); setDurInput(String(block.duration)); setEditingDur(true); }}
                 >
                   {block.duration}m
                 </button>
               )}
+
+              {/* Time badge / trigger */}
+              <div className="chip-time-wrap" style={{ position: 'relative' }}>
+                <button
+                  className={`time-btn ${block.startTime ? 'has-time' : ''}`}
+                  onClick={e => { e.stopPropagation(); setShowTimePop(v => !v); }}
+                  title="Set start time"
+                >
+                  {block.startTime ? fmt24(block.startTime) : '+ time'}
+                </button>
+                {showTimePop && (
+                  <TimePopover
+                    current={block.startTime || null}
+                    onSelect={t => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
+                    onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
+                    onClose={() => setShowTimePop(false)}
+                  />
+                )}
+              </div>
             </div>
           </div>
 
+          {/* Delete — absolute, never in flex flow */}
           <button
             className="chip-delete"
-            onClick={(e) => { e.stopPropagation(); removeBlock(dateKey, block.instanceId); }}
-            title="Remove"
-          >
-            ×
-          </button>
+            onClick={e => { e.stopPropagation(); removeBlock(dateKey, block.instanceId); }}
+          >×</button>
         </div>
       )}
     </Draggable>
