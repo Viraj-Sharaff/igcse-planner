@@ -28,20 +28,35 @@ export function useGoogleCalendar() {
         scope:     SCOPES,
         callback:  (resp) => {
           if (resp.error) {
+            // 'access_denied' or real errors — clear auto-connect flag
+            if (resp.error !== 'interaction_required') {
+              localStorage.removeItem('gcal_auto_connect');
+            }
             console.error('[GCal] OAuth error:', resp.error, resp.error_description);
             updateStatus('error');
             return;
           }
           console.log('[GCal] Connected ✓ token length:', resp.access_token?.length);
           accessTokenRef.current = resp.access_token;
+          localStorage.setItem('gcal_auto_connect', '1');
           updateStatus('connected');
-          // Auto-expire slightly before token actually expires
+          // Auto-expire slightly before token actually expires, then silently refresh
           setTimeout(() => {
             accessTokenRef.current = null;
             updateStatus('idle');
+            // Silent refresh — no popup since user already granted access
+            if (tokenClientRef.current) {
+              tokenClientRef.current.requestAccessToken({ prompt: '' });
+            }
           }, (resp.expires_in - 120) * 1000);
         },
       });
+
+      // Auto-connect silently on page load if user has connected before
+      if (localStorage.getItem('gcal_auto_connect')) {
+        updateStatus('loading');
+        tokenClientRef.current.requestAccessToken({ prompt: '' });
+      }
     };
     script.onerror = () => updateStatus('error');
     document.head.appendChild(script);
