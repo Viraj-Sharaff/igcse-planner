@@ -28,8 +28,13 @@ const TIME_SECTIONS = [
   { label: 'Late night', times: ['00:00','01:00','02:00','03:00'] },
 ];
 
-function TimePopover({ current, onSelect, onClear, onClose }) {
+// Renders via a fixed-position div appended to <body> so it's never clipped
+// by any grid/overflow context
+import { createPortal } from 'react-dom';
+
+function TimePopover({ current, anchorRect, onSelect, onClear, onClose }) {
   const ref = useRef(null);
+
   useEffect(() => {
     const t = setTimeout(() => {
       function h(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
@@ -39,8 +44,17 @@ function TimePopover({ current, onSelect, onClear, onClose }) {
     return () => clearTimeout(t);
   }, [onClose]);
 
-  return (
-    <div className="time-popover" ref={ref} onClick={e => e.stopPropagation()}>
+  // Position below the anchor button, keep within viewport
+  const top  = Math.min(anchorRect.bottom + 6, window.innerHeight - 420);
+  const left = Math.min(anchorRect.left,        window.innerWidth  - 250);
+
+  return createPortal(
+    <div
+      className="time-popover"
+      ref={ref}
+      style={{ position: 'fixed', top, left }}
+      onClick={e => e.stopPropagation()}
+    >
       {TIME_SECTIONS.map(s => (
         <div key={s.label} className="time-section">
           <div className="time-section-label">{s.label}</div>
@@ -62,7 +76,8 @@ function TimePopover({ current, onSelect, onClear, onClose }) {
           ✕ remove time
         </button>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -70,7 +85,8 @@ export default function BlockChip({ block, dateKey, index }) {
   const { toggleDone, updateDuration, updateStartTime, removeBlock } = usePlanner();
   const [editingDur,  setEditingDur]  = useState(false);
   const [durInput,    setDurInput]    = useState(String(block.duration));
-  const [showTimePop, setShowTimePop] = useState(false);
+  const [showTimePop, setShowTimePop]   = useState(false);
+  const [anchorRect,  setAnchorRect]    = useState(null);
 
   const color = block.isTutor
     ? (TUTOR_MAP[block.tutorId]?.color || '#555')
@@ -156,13 +172,18 @@ export default function BlockChip({ block, dateKey, index }) {
               <div className="chip-time-wrap" style={{ position: 'relative' }}>
                 <button
                   className={`time-btn ${block.startTime ? 'has-time' : ''}`}
-                  onClick={e => { e.stopPropagation(); setShowTimePop(v => !v); }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setAnchorRect(e.currentTarget.getBoundingClientRect());
+                    setShowTimePop(v => !v);
+                  }}
                 >
                   {block.startTime ? fmt24(block.startTime) : '+ time'}
                 </button>
-                {showTimePop && (
+                {showTimePop && anchorRect && (
                   <TimePopover
                     current={block.startTime || null}
+                    anchorRect={anchorRect}
                     onSelect={t => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
                     onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
                     onClose={() => setShowTimePop(false)}

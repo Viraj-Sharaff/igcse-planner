@@ -737,11 +737,9 @@ input  { font-family: var(--mono); }
   color: var(--accent-l);
 }
 
-/* ── Time popover ── */
+/* ── Time popover — rendered via portal into <body> so never clipped ── */
 .time-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  /* position: fixed is set inline via JS */
   background: var(--s2);
   border: 1px solid var(--bd2);
   border-radius: var(--r-lg);
