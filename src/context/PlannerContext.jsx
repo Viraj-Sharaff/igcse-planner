@@ -155,7 +155,8 @@ export function PlannerProvider({ children }) {
       });
 
       // Async: create Google Calendar event and store its ID back on the block
-      if (gcal.connected) {
+      // Use isReady() (ref-based) to avoid stale closure on gcal.connected
+      if (gcal.isReady()) {
         gcal.createEvent(dateKey, newBlock, schoolDays).then((googleEventId) => {
           if (!googleEventId) return;
           setCalendar((prev) => {
@@ -176,7 +177,7 @@ export function PlannerProvider({ children }) {
       setCalendar((prev) => {
         const existing = Array.isArray(prev[dateKey]) ? prev[dateKey] : [];
         const block = existing.find((b) => b.instanceId === instanceId);
-        if (block?.googleEventId && gcal.connected) {
+        if (block?.googleEventId && gcal.isReady()) {
           gcal.deleteEvent(block.googleEventId);
         }
         return { ...prev, [dateKey]: existing.filter((b) => b.instanceId !== instanceId) };

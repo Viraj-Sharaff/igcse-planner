@@ -1,24 +1,18 @@
-/**
- * Google Calendar integration via Google Identity Services (OAuth 2.0)
- *
- * Setup (one-time):
- * 1. Go to https://console.cloud.google.com and create a project
- * 2. Enable "Google Calendar API"
- * 3. Create credentials → OAuth 2.0 Client ID → Web application
- * 4. Add your Vercel domain (https://your-app.vercel.app) to Authorized JavaScript origins
- * 5. Copy the Client ID and add it to Vercel env vars as VITE_GCAL_CLIENT_ID
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const CLIENT_ID = import.meta.env.VITE_GCAL_CLIENT_ID;
 const SCOPES    = 'https://www.googleapis.com/auth/calendar.events';
+const CAL_API   = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 
 export function useGoogleCalendar() {
   const [status, setStatus]   = useState('idle'); // idle | loading | connected | error
   const tokenClientRef        = useRef(null);
   const accessTokenRef        = useRef(null);
   const scriptLoadedRef       = useRef(false);
+  // Ref mirrors status so callbacks always see the latest value without stale closure
+  const statusRef             = useRef('idle');
+
+  const updateStatus = (s) => { statusRef.current = s; setStatus(s); };
 
   useEffect(() => {
     if (!CLIENT_ID || scriptLoadedRef.current) return;
@@ -33,49 +27,58 @@ export function useGoogleCalendar() {
         client_id: CLIENT_ID,
         scope:     SCOPES,
         callback:  (resp) => {
-          if (resp.error) { setStatus('error'); return; }
+          if (resp.error) {
+            console.error('[GCal] OAuth error:', resp.error, resp.error_description);
+            updateStatus('error');
+            return;
+          }
+          console.log('[GCal] Connected ✓ token length:', resp.access_token?.length);
           accessTokenRef.current = resp.access_token;
-          setStatus('connected');
-          // Token expires in ~1hr; reset status so user can re-auth
+          updateStatus('connected');
+          // Auto-expire slightly before token actually expires
           setTimeout(() => {
             accessTokenRef.current = null;
-            setStatus('idle');
-          }, (resp.expires_in - 60) * 1000);
+            updateStatus('idle');
+          }, (resp.expires_in - 120) * 1000);
         },
       });
     };
-    script.onerror = () => setStatus('error');
+    script.onerror = () => updateStatus('error');
     document.head.appendChild(script);
   }, []);
 
   /** Prompt Google sign-in / token grant */
   const connect = useCallback(() => {
-    if (!tokenClientRef.current) return;
-    setStatus('loading');
+    if (!tokenClientRef.current) {
+      console.warn('[GCal] tokenClient not ready yet');
+      return;
+    }
+    updateStatus('loading');
     tokenClientRef.current.requestAccessToken({ prompt: '' });
   }, []);
 
-  const connected = status === 'connected';
-
   /**
    * Create a Google Calendar event for a study block.
-   * Returns the Google event ID (string) or null on failure.
+   * Uses accessTokenRef directly — no stale closure issue.
+   * Returns the Google event ID or null.
    */
   const createEvent = useCallback(async (dateKey, block, schoolDays) => {
-    if (!accessTokenRef.current) return null;
+    const token = accessTokenRef.current;
+    if (!token) {
+      console.warn('[GCal] createEvent called but no access token');
+      return null;
+    }
 
     const [year, month, day] = dateKey.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    const dow  = date.getDay(); // 0=Sun
-
-    // Determine start time from study window logic
-    const isWeekday   = dow >= 1 && dow <= 5;
-    const hasSchool   = isWeekday
+    const date    = new Date(year, month - 1, day);
+    const dow     = date.getDay();
+    const isWday  = dow >= 1 && dow <= 5;
+    const hasSchool = isWday
       ? schoolDays[dateKey] !== false
       : schoolDays[dateKey] === true;
 
     let startHour = 9, startMin = 0;
-    if (hasSchool && isWeekday) {
+    if (hasSchool && isWday) {
       startHour = (dow === 1 || dow === 3) ? 16 : 15;
       startMin  = 30;
     }
@@ -86,53 +89,76 @@ export function useGoogleCalendar() {
 
     const title = block.isTutor
       ? `📚 Tutor — ${block.label}`
-      : `📖 ${block.subjectName || block.subjectId || 'Study'} — ${block.label}`;
+      : `📖 ${block.subjectName || 'Study'} — ${block.label}`;
 
     const body = {
       summary:     title,
-      description: `IGCSE Planner block\nDuration: ${block.duration} min`,
+      description: `IGCSE Planner\nDuration: ${block.duration} min`,
       start: { dateTime: start.toISOString(), timeZone: tz },
       end:   { dateTime: end.toISOString(),   timeZone: tz },
     };
 
+    console.log('[GCal] Creating event:', title, 'on', dateKey);
+
     try {
-      const res  = await fetch(
-        'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-        {
-          method:  'POST',
-          headers: {
-            Authorization:  `Bearer ${accessTokenRef.current}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        }
-      );
-      if (!res.ok) throw new Error(await res.text());
+      const res = await fetch(CAL_API, {
+        method:  'POST',
+        headers: {
+          Authorization:  `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
       const data = await res.json();
+
+      if (!res.ok) {
+        console.error('[GCal] API error:', res.status, data?.error?.message);
+        // Token expired — reset so user can reconnect
+        if (res.status === 401) {
+          accessTokenRef.current = null;
+          updateStatus('idle');
+        }
+        return null;
+      }
+
+      console.log('[GCal] Event created ✓ id:', data.id);
       return data.id || null;
     } catch (e) {
-      console.error('[GCal] create error:', e);
+      console.error('[GCal] fetch error:', e);
       return null;
     }
   }, []);
 
   /** Delete a Google Calendar event by its event ID */
   const deleteEvent = useCallback(async (googleEventId) => {
-    if (!accessTokenRef.current || !googleEventId) return;
+    const token = accessTokenRef.current;
+    if (!token || !googleEventId) return;
     try {
-      await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${googleEventId}`,
-        {
-          method:  'DELETE',
-          headers: { Authorization: `Bearer ${accessTokenRef.current}` },
-        }
-      );
+      const res = await fetch(`${CAL_API}/${googleEventId}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        accessTokenRef.current = null;
+        updateStatus('idle');
+      }
+      console.log('[GCal] Event deleted', googleEventId, res.status);
     } catch (e) {
       console.error('[GCal] delete error:', e);
     }
   }, []);
 
-  const isConfigured = !!CLIENT_ID;
+  /** Check if ready to create events (uses ref, not stale state) */
+  const isReady = useCallback(() => !!accessTokenRef.current, []);
 
-  return { status, connected, isConfigured, connect, createEvent, deleteEvent };
+  return {
+    status,
+    connected: status === 'connected',
+    isConfigured: !!CLIENT_ID,
+    connect,
+    createEvent,
+    deleteEvent,
+    isReady,
+  };
 }
