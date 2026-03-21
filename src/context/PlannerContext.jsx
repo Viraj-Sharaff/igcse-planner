@@ -158,59 +158,79 @@ export function PlannerProvider({ children }) {
     [targets, placedCounts, setCalendar]
   );
 
+  // Mirror calendar in a ref so callbacks can read current state without
+  // needing it as a dependency (avoids stale closures + unnecessary re-creation)
+  const calendarRef = useRef(calendar);
+  useEffect(() => { calendarRef.current = calendar; }, [calendar]);
+
+  // ─── Google Calendar pending-delete queue ──────────────────────────────────
+  // Queues googleEventIds that need to be deleted from GCal.
+  // Flushed by the sync effect whenever GCal is connected.
+  // This handles the case where the user deletes/moves a block before
+  // the auto-reconnect has finished (isReady() would be false).
+  const gcalPendingDeletes  = useRef(new Set());
+  const gcalProcessingRef   = useRef(new Set()); // instanceIds currently being created
+
+  const queueGcalDelete = useCallback((googleEventId) => {
+    if (googleEventId) gcalPendingDeletes.current.add(googleEventId);
+  }, []);
+
   const removeBlock = useCallback(
     (dateKey, instanceId) => {
-      setCalendar((prev) => {
-        const existing = Array.isArray(prev[dateKey]) ? prev[dateKey] : [];
-        const block = existing.find((b) => b.instanceId === instanceId);
-        // Delete GCal event directly — don't rely on diff
-        if (block?.googleEventId && gcal.isReady()) {
-          gcal.deleteEvent(block.googleEventId);
-        }
-        return { ...prev, [dateKey]: existing.filter((b) => b.instanceId !== instanceId) };
-      });
+      // Read current state via ref — never put side-effects inside setState updaters
+      const existing = Array.isArray(calendarRef.current[dateKey]) ? calendarRef.current[dateKey] : [];
+      const block = existing.find((b) => b.instanceId === instanceId);
+      if (block?.googleEventId) queueGcalDelete(block.googleEventId);
+      setCalendar((prev) => ({
+        ...prev,
+        [dateKey]: (Array.isArray(prev[dateKey]) ? prev[dateKey] : []).filter((b) => b.instanceId !== instanceId),
+      }));
     },
-    [setCalendar, gcal.deleteEvent, gcal.isReady]
+    [setCalendar, queueGcalDelete]
   );
 
   const moveBlock = useCallback(
     (fromDateKey, instanceId, toDateKey, toIndex) => {
+      // Read current state via ref to grab googleEventId before clearing it
+      const fromBlocks = Array.isArray(calendarRef.current[fromDateKey]) ? calendarRef.current[fromDateKey] : [];
+      const block = fromBlocks.find((b) => b.instanceId === instanceId);
+      if (block?.googleEventId && fromDateKey !== toDateKey) {
+        // Moving to a different day: queue deletion of old event, sync effect creates new one
+        queueGcalDelete(block.googleEventId);
+      }
+
       setCalendar((prev) => {
-        const fromBlocks = Array.isArray(prev[fromDateKey]) ? [...prev[fromDateKey]] : [];
-        const blockIdx = fromBlocks.findIndex((b) => b.instanceId === instanceId);
-        if (blockIdx === -1) return prev;
-        const [block] = fromBlocks.splice(blockIdx, 1);
+        const from = Array.isArray(prev[fromDateKey]) ? [...prev[fromDateKey]] : [];
+        const idx = from.findIndex((b) => b.instanceId === instanceId);
+        if (idx === -1) return prev;
+        const [moved] = from.splice(idx, 1);
 
         if (fromDateKey === toDateKey) {
-          fromBlocks.splice(toIndex, 0, block);
-          return { ...prev, [fromDateKey]: fromBlocks };
+          from.splice(toIndex, 0, moved);
+          return { ...prev, [fromDateKey]: from };
         }
 
-        // Moving to a different day: delete the old GCal event directly,
-        // clear googleEventId so the sync effect creates a new one on the new date.
-        if (block.googleEventId && gcal.isReady()) {
-          gcal.deleteEvent(block.googleEventId);
-        }
-        const { googleEventId: _gid, ...blockWithoutEvent } = block;
-        const toBlocks = Array.isArray(prev[toDateKey]) ? [...prev[toDateKey]] : [];
-        toBlocks.splice(toIndex, 0, blockWithoutEvent);
-        return { ...prev, [fromDateKey]: fromBlocks, [toDateKey]: toBlocks };
+        const { googleEventId: _gid, ...blockWithoutEvent } = moved;
+        const to = Array.isArray(prev[toDateKey]) ? [...prev[toDateKey]] : [];
+        to.splice(toIndex, 0, blockWithoutEvent);
+        return { ...prev, [fromDateKey]: from, [toDateKey]: to };
       });
     },
-    [setCalendar, gcal.deleteEvent, gcal.isReady]
+    [setCalendar, queueGcalDelete]
   );
 
   // ─── Google Calendar auto-sync effect ─────────────────────────────────────
-  // Only handles creation — deletions are handled directly in removeBlock/moveBlock.
-  const gcalProcessingRef = useRef(new Set()); // instanceIds currently being created
-
   useEffect(() => {
     if (!gcal.isReady()) {
       gcalProcessingRef.current.clear();
       return;
     }
 
-    // Find blocks without a googleEventId and create events for them
+    // 1. Flush pending deletions
+    gcalPendingDeletes.current.forEach((id) => gcal.deleteEvent(id));
+    gcalPendingDeletes.current.clear();
+
+    // 2. Create events for blocks that don't have one yet
     const toCreate = [];
     Object.entries(calendar).forEach(([dateKey, blocks]) => {
       if (!Array.isArray(blocks)) return;
@@ -226,17 +246,16 @@ export function PlannerProvider({ children }) {
       gcal.createEvent(dateKey, block).then((googleEventId) => {
         gcalProcessingRef.current.delete(block.instanceId);
         if (!googleEventId) return;
-        // Write the event ID back onto the block so we can delete it later
         setCalendar((prev) => {
           const dayBlocks = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
           const idx = dayBlocks.findIndex((b) => b.instanceId === block.instanceId);
-          if (idx === -1) return prev; // block was removed before event was created
+          if (idx === -1) return prev;
           dayBlocks[idx] = { ...dayBlocks[idx], googleEventId };
           return { ...prev, [dateKey]: dayBlocks };
         });
       });
     });
-  // gcal.connected triggers re-run when user connects so existing blocks get pushed
+  // gcal.connected triggers re-run on connect so pending deletes + unsynced blocks are processed
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendar, gcal.connected]);
 
@@ -274,22 +293,24 @@ export function PlannerProvider({ children }) {
 
   const updateStartTime = useCallback(
     (dateKey, instanceId, time) => {
-      // time is "HH:MM" (24h) or null to clear
+      // Queue deletion of the old GCal event (if any) — sync effect will create a new one
+      const existing = Array.isArray(calendarRef.current[dateKey]) ? calendarRef.current[dateKey] : [];
+      const block = existing.find((b) => b.instanceId === instanceId);
+      if (block?.googleEventId) queueGcalDelete(block.googleEventId);
+
       setCalendar((prev) => {
-        const existing = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
+        const blocks = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
         return {
           ...prev,
-          [dateKey]: existing.map((b) => {
+          [dateKey]: blocks.map((b) => {
             if (b.instanceId !== instanceId) return b;
-            // Clear googleEventId so sync effect deletes old event and creates new one
-            // with the correct time (or as all-day if time is cleared)
             const { googleEventId: _old, ...rest } = b;
             return time ? { ...rest, startTime: time } : { ...rest, startTime: undefined };
           }),
         };
       });
     },
-    [setCalendar]
+    [setCalendar, queueGcalDelete]
   );
 
   // ─── School day management ────────────────────────────────────────────────
