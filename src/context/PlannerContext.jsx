@@ -162,11 +162,15 @@ export function PlannerProvider({ children }) {
     (dateKey, instanceId) => {
       setCalendar((prev) => {
         const existing = Array.isArray(prev[dateKey]) ? prev[dateKey] : [];
-        // gcal deletion is handled by the sync effect (diff vs prevCalendarRef)
+        const block = existing.find((b) => b.instanceId === instanceId);
+        // Delete GCal event directly — don't rely on diff
+        if (block?.googleEventId && gcal.isReady()) {
+          gcal.deleteEvent(block.googleEventId);
+        }
         return { ...prev, [dateKey]: existing.filter((b) => b.instanceId !== instanceId) };
       });
     },
-    [setCalendar]
+    [setCalendar, gcal.deleteEvent, gcal.isReady]
   );
 
   const moveBlock = useCallback(
@@ -182,52 +186,33 @@ export function PlannerProvider({ children }) {
           return { ...prev, [fromDateKey]: fromBlocks };
         }
 
-        // Moving to a different day: clear googleEventId so the sync effect
-        // deletes the old event (detected via prevCalendarRef diff) and creates
-        // a new one on the correct date.
+        // Moving to a different day: delete the old GCal event directly,
+        // clear googleEventId so the sync effect creates a new one on the new date.
+        if (block.googleEventId && gcal.isReady()) {
+          gcal.deleteEvent(block.googleEventId);
+        }
         const { googleEventId: _gid, ...blockWithoutEvent } = block;
         const toBlocks = Array.isArray(prev[toDateKey]) ? [...prev[toDateKey]] : [];
         toBlocks.splice(toIndex, 0, blockWithoutEvent);
         return { ...prev, [fromDateKey]: fromBlocks, [toDateKey]: toBlocks };
       });
     },
-    [setCalendar]
+    [setCalendar, gcal.deleteEvent, gcal.isReady]
   );
 
   // ─── Google Calendar auto-sync effect ─────────────────────────────────────
-  // Works like the Firestore sync: watches calendar state and keeps Google
-  // Calendar in sync automatically — on connect pushes everything, on changes
-  // creates/deletes events as needed.
-  const gcalPrevRef       = useRef(null);   // previous calendar snapshot for diff
+  // Only handles creation — deletions are handled directly in removeBlock/moveBlock.
   const gcalProcessingRef = useRef(new Set()); // instanceIds currently being created
 
   useEffect(() => {
     if (!gcal.isReady()) {
-      // When disconnected, reset prev so everything re-syncs on next connect
-      gcalPrevRef.current = null;
       gcalProcessingRef.current.clear();
       return;
     }
 
-    const curr = calendar;
-    const prev = gcalPrevRef.current || {};
-
-    // 1. Detect removed blocks → delete their Google Calendar events
-    Object.entries(prev).forEach(([dateKey, prevBlocks]) => {
-      if (!Array.isArray(prevBlocks)) return;
-      const currIds = new Set(
-        (Array.isArray(curr[dateKey]) ? curr[dateKey] : []).map((b) => b.instanceId)
-      );
-      prevBlocks.forEach((block) => {
-        if (!currIds.has(block.instanceId) && block.googleEventId) {
-          gcal.deleteEvent(block.googleEventId);
-        }
-      });
-    });
-
-    // 2. Detect new/unsynced blocks → create Google Calendar events
+    // Find blocks without a googleEventId and create events for them
     const toCreate = [];
-    Object.entries(curr).forEach(([dateKey, blocks]) => {
+    Object.entries(calendar).forEach(([dateKey, blocks]) => {
       if (!Array.isArray(blocks)) return;
       blocks.forEach((block) => {
         if (!block.googleEventId && !gcalProcessingRef.current.has(block.instanceId)) {
@@ -251,8 +236,6 @@ export function PlannerProvider({ children }) {
         });
       });
     });
-
-    gcalPrevRef.current = curr;
   // gcal.connected triggers re-run when user connects so existing blocks get pushed
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendar, gcal.connected]);
