@@ -445,7 +445,7 @@ input  { font-family: var(--mono); }
   background: var(--bd0);
   border: 1px solid var(--bd0);
   border-radius: var(--r-xl);
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -491,7 +491,7 @@ input  { font-family: var(--mono); }
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transition: background 0.12s;
 }
 
@@ -740,13 +740,13 @@ input  { font-family: var(--mono); }
 /* ── Time popover ── */
 .time-popover {
   position: absolute;
-  top: calc(100% + 5px);
-  right: -8px;
+  top: calc(100% + 4px);
+  left: 0;
   background: var(--s2);
   border: 1px solid var(--bd2);
   border-radius: var(--r-lg);
   padding: 10px;
-  z-index: 600;
+  z-index: 9999;
   box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
   width: 232px;
   animation: fadeUp 0.14s var(--ease);

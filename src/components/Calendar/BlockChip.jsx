@@ -157,7 +157,6 @@ export default function BlockChip({ block, dateKey, index }) {
                 <button
                   className={`time-btn ${block.startTime ? 'has-time' : ''}`}
                   onClick={e => { e.stopPropagation(); setShowTimePop(v => !v); }}
-                  title="Set start time"
                 >
                   {block.startTime ? fmt24(block.startTime) : '+ time'}
                 </button>
