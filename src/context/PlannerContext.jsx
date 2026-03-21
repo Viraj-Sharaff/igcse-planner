@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useCallback, useEffect, useRef, use
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useGoogleCalendar } from '../hooks/useGoogleCalendar';
 import { SUBJECTS, TUTORS, PAPER_MAP, TUTOR_MAP } from '../data/subjects';
 import { generateDayRange, formatDateKey, generateId, daysUntil } from '../utils/dates';
 
@@ -22,6 +23,9 @@ export function PlannerProvider({ children }) {
   const [calPre, setCalPre] = useLocalStorage('igcse_cal_pre', {});
   const [calCrunch, setCalCrunch] = useLocalStorage('igcse_cal_crunch', {});
   const [schoolDays, setSchoolDays] = useLocalStorage('igcse_school', {});
+
+  // Google Calendar integration
+  const gcal = useGoogleCalendar();
 
   // Active mode accessors
   const targets = mode === 'pre' ? targetsPre : targetsCrunch;
@@ -120,6 +124,7 @@ export function PlannerProvider({ children }) {
           paperId: id,
           isTutor: false,
           subjectId: info.subject.id,
+          subjectName: info.subject.shortName,
           label: info.paper.label,
           duration: info.paper.duration,
           done: false,
@@ -148,18 +153,36 @@ export function PlannerProvider({ children }) {
         }
         return { ...prev, [dateKey]: existing };
       });
+
+      // Async: create Google Calendar event and store its ID back on the block
+      if (gcal.connected) {
+        gcal.createEvent(dateKey, newBlock, schoolDays).then((googleEventId) => {
+          if (!googleEventId) return;
+          setCalendar((prev) => {
+            const dayBlocks = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
+            const idx = dayBlocks.findIndex((b) => b.instanceId === newBlock.instanceId);
+            if (idx === -1) return prev;
+            dayBlocks[idx] = { ...dayBlocks[idx], googleEventId };
+            return { ...prev, [dateKey]: dayBlocks };
+          });
+        });
+      }
     },
-    [targets, placedCounts, setCalendar]
+    [targets, placedCounts, setCalendar, gcal, schoolDays]
   );
 
   const removeBlock = useCallback(
     (dateKey, instanceId) => {
       setCalendar((prev) => {
         const existing = Array.isArray(prev[dateKey]) ? prev[dateKey] : [];
+        const block = existing.find((b) => b.instanceId === instanceId);
+        if (block?.googleEventId && gcal.connected) {
+          gcal.deleteEvent(block.googleEventId);
+        }
         return { ...prev, [dateKey]: existing.filter((b) => b.instanceId !== instanceId) };
       });
     },
-    [setCalendar]
+    [setCalendar, gcal]
   );
 
   const moveBlock = useCallback(
@@ -389,6 +412,7 @@ export function PlannerProvider({ children }) {
     updateDuration,
     onDragEnd,
     syncStatus,
+    gcal,
     SUBJECTS,
     TUTORS,
   };

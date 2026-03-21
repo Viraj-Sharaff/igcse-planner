@@ -8,6 +8,13 @@ const SYNC_LABEL = {
   error:   { text: '✕ error',    cls: 'sync-err'  },
 };
 
+const GCAL_LABEL = {
+  idle:      { text: '+ Google Cal',    cls: 'gcal-connect' },
+  loading:   { text: '… connecting',    cls: 'gcal-loading'  },
+  connected: { text: '✓ Google Cal',    cls: 'gcal-connected'},
+  error:     { text: '✕ Cal error',     cls: 'gcal-error'    },
+};
+
 export default function Header() {
   const {
     mode, setMode,
@@ -15,10 +22,12 @@ export default function Header() {
     totalUnscheduled,
     daysToStudyLeave, daysToExams,
     syncStatus,
+    gcal,
   } = usePlanner();
 
-  const syncInfo = SYNC_LABEL[syncStatus] || SYNC_LABEL.idle;
-  const pct = totalPlaced > 0 ? Math.round((totalDone / totalPlaced) * 100) : 0;
+  const syncInfo  = SYNC_LABEL[syncStatus]  || SYNC_LABEL.idle;
+  const gcalInfo  = GCAL_LABEL[gcal.status] || GCAL_LABEL.idle;
+  const pct       = totalPlaced > 0 ? Math.round((totalDone / totalPlaced) * 100) : 0;
 
   return (
     <header className="header">
@@ -63,7 +72,7 @@ export default function Header() {
               <div className="header-progress-bar">
                 <div className="header-progress-fill" style={{ width: `${pct}%` }} />
               </div>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-dim)' }}>{pct}%</span>
+              <span className="progress-pct">{pct}%</span>
             </>
           )}
         </div>
@@ -91,7 +100,23 @@ export default function Header() {
 
         <div className="header-divider" />
 
-        <span className={`sync-pill ${syncInfo.cls}`} title={isConfigured ? 'Firebase sync' : 'Add .env.local to enable sync'}>
+        {/* Google Calendar button — only shown if VITE_GCAL_CLIENT_ID is set */}
+        {gcal.isConfigured && (
+          <button
+            className={`gcal-btn ${gcalInfo.cls}`}
+            onClick={gcal.status !== 'connected' ? gcal.connect : undefined}
+            title={gcal.status === 'connected' ? 'Google Calendar connected — blocks sync automatically' : 'Connect Google Calendar'}
+            disabled={gcal.status === 'loading'}
+          >
+            <span className="gcal-icon">📅</span>
+            {gcalInfo.text}
+          </button>
+        )}
+
+        <span
+          className={`sync-pill ${syncInfo.cls}`}
+          title={isConfigured ? 'Firebase sync' : 'Add .env.local to enable sync'}
+        >
           {isConfigured ? syncInfo.text : '○ local only'}
         </span>
       </div>

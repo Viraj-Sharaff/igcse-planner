@@ -16,7 +16,8 @@ function PoolChip({ item, index }) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{
-            borderColor: color,
+            borderColor: 'var(--bd1)',
+            borderLeftColor: color,
             ...provided.draggableProps.style,
           }}
         >
