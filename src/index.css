@@ -1155,10 +1155,14 @@ input  { font-family: var(--mono); }
     border-radius: 8px;
     gap: 8px;
   }
+  /* Mobile chips are full-width so always show the meta row */
+  .mobile-day-blocks .chip-row-meta { display: flex; }
   .mobile-day-blocks .chip-subject { font-size: 12px; }
   .mobile-day-blocks .chip-paper-label { font-size: 11px; opacity: 0.7; }
   .mobile-day-blocks .chip-tutor-name { font-size: 12px; }
   .mobile-day-blocks .dur-btn { font-size: 11px; padding: 3px 8px; }
   .mobile-day-blocks .chip-checkbox { width: 16px; height: 16px; }
   .mobile-day-blocks .chip-delete { width: 22px; height: 22px; opacity: 1; font-size: 18px; }
+  /* Time button always visible on mobile (no hover) */
+  .mobile-day-blocks .time-btn { opacity: 1; pointer-events: auto; }
 }
