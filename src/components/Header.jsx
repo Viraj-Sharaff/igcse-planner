@@ -23,12 +23,7 @@ export default function Header() {
     daysToStudyLeave, daysToExams,
     syncStatus,
     gcal,
-    clearAllData,
   } = usePlanner();
-
-  function handleReset() {
-    if (window.confirm('Reset ALL data? This cannot be undone.')) clearAllData();
-  }
 
   const syncInfo  = SYNC_LABEL[syncStatus]  || SYNC_LABEL.idle;
   const gcalInfo  = GCAL_LABEL[gcal.status] || GCAL_LABEL.idle;
@@ -125,9 +120,6 @@ export default function Header() {
           {isConfigured ? syncInfo.text : '○ local only'}
         </span>
 
-        <button className="reset-btn" onClick={handleReset} title="Reset all data">
-          🗑
-        </button>
       </div>
     </header>
   );

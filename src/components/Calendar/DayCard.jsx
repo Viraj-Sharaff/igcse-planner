@@ -12,9 +12,11 @@ export default function DayCard({ date }) {
   const dateKey   = formatDateKey(date);
   const dayNum    = date.getDate();
   const isFirst   = dayNum === 1;
-  const blocks    = Array.isArray(calendar[dateKey]) ? calendar[dateKey] : [];
   const isToday   = dateKey === todayKey;
   const isPast    = dateKey < todayKey;
+  const allBlocks = Array.isArray(calendar[dateKey]) ? calendar[dateKey] : [];
+  // Past days: only show completed blocks — undone ones are back in the pool
+  const blocks    = isPast ? allBlocks.filter(b => b.done) : allBlocks;
   const { windowLabel, hasSchool } = getStudyWindow(date, mode, schoolDays);
 
   const totalMinutes = blocks.reduce((s, b) => s + (b.duration || 0), 0);

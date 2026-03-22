@@ -182,16 +182,19 @@ export function PlannerProvider({ children }) {
   const calendarRef = useRef(calendar);
   useEffect(() => { calendarRef.current = calendar; }, [calendar]);
 
-  // ─── Google Calendar pending-delete queue ──────────────────────────────────
-  // Queues googleEventIds that need to be deleted from GCal.
-  // Flushed by the sync effect whenever GCal is connected.
-  // This handles the case where the user deletes/moves a block before
-  // the auto-reconnect has finished (isReady() would be false).
-  const gcalPendingDeletes  = useRef(new Set());
-  const gcalProcessingRef   = useRef(new Set()); // instanceIds currently being created
+  // ─── Google Calendar pending queues ───────────────────────────────────────
+  // Both queues are flushed by the sync effect whenever GCal is connected,
+  // so operations queued while disconnected are never silently dropped.
+  const gcalPendingDeletes  = useRef(new Set());                // googleEventIds to delete
+  const gcalPendingUpdates  = useRef(new Map());                // googleEventId → {dateKey, block}
+  const gcalProcessingRef   = useRef(new Set());                // instanceIds being created
 
   const queueGcalDelete = useCallback((googleEventId) => {
     if (googleEventId) gcalPendingDeletes.current.add(googleEventId);
+  }, []);
+
+  const queueGcalUpdate = useCallback((googleEventId, dateKey, block) => {
+    if (googleEventId) gcalPendingUpdates.current.set(googleEventId, { dateKey, block });
   }, []);
 
   const removeBlock = useCallback(
@@ -248,6 +251,12 @@ export function PlannerProvider({ children }) {
     // 1. Flush pending deletions
     gcalPendingDeletes.current.forEach((id) => gcal.deleteEvent(id));
     gcalPendingDeletes.current.clear();
+
+    // 2. Flush pending updates (time changes on already-synced blocks)
+    gcalPendingUpdates.current.forEach(({ dateKey, block }, eventId) => {
+      gcal.updateEvent(eventId, dateKey, block);
+    });
+    gcalPendingUpdates.current.clear();
 
     // 2. Create events for blocks that don't have one yet
     const toCreate = [];
@@ -312,24 +321,38 @@ export function PlannerProvider({ children }) {
 
   const updateStartTime = useCallback(
     (dateKey, instanceId, time) => {
-      // Queue deletion of the old GCal event (if any) — sync effect will create a new one
       const existing = Array.isArray(calendarRef.current[dateKey]) ? calendarRef.current[dateKey] : [];
       const block = existing.find((b) => b.instanceId === instanceId);
-      if (block?.googleEventId) queueGcalDelete(block.googleEventId);
 
-      setCalendar((prev) => {
-        const blocks = Array.isArray(prev[dateKey]) ? [...prev[dateKey]] : [];
-        return {
+      if (block?.googleEventId) {
+        // Block is already synced — PATCH the existing event in-place (no delete+recreate).
+        // This avoids the race condition where the async createEvent hasn't written back
+        // its ID yet when a second time change arrives.
+        const updatedBlock = time
+          ? { ...block, startTime: time }
+          : { ...block, startTime: undefined };
+        queueGcalUpdate(block.googleEventId, dateKey, updatedBlock);
+
+        // Update only startTime in state — keep googleEventId stable
+        setCalendar((prev) => ({
           ...prev,
-          [dateKey]: blocks.map((b) => {
+          [dateKey]: (Array.isArray(prev[dateKey]) ? prev[dateKey] : []).map((b) =>
+            b.instanceId !== instanceId ? b :
+              time ? { ...b, startTime: time } : (({ startTime: _, ...rest }) => rest)(b)
+          ),
+        }));
+      } else {
+        // No GCal event yet — just update startTime; sync effect creates with correct time
+        setCalendar((prev) => ({
+          ...prev,
+          [dateKey]: (Array.isArray(prev[dateKey]) ? prev[dateKey] : []).map((b) => {
             if (b.instanceId !== instanceId) return b;
-            const { googleEventId: _old, ...rest } = b;
-            return time ? { ...rest, startTime: time } : { ...rest, startTime: undefined };
+            return time ? { ...b, startTime: time } : (({ startTime: _, ...rest }) => rest)(b);
           }),
-        };
-      });
+        }));
+      }
     },
-    [setCalendar, queueGcalDelete]
+    [setCalendar, queueGcalUpdate]
   );
 
   // ─── Reset all data ──────────────────────────────────────────────────────

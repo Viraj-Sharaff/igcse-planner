@@ -147,6 +147,46 @@ export function useGoogleCalendar() {
     }
   }, []);
 
+  /**
+   * Update the start/end time of an existing Google Calendar event (PATCH).
+   * Handles both all-day (date) and timed (dateTime) formats.
+   */
+  const updateEvent = useCallback(async (googleEventId, dateKey, block) => {
+    const token = accessTokenRef.current;
+    if (!token || !googleEventId) return false;
+
+    const [year, month, day] = dateKey.split('-').map(Number);
+    let startField, endField;
+
+    if (block.startTime) {
+      const [h, m] = block.startTime.split(':').map(Number);
+      const start  = new Date(year, month - 1, day, h, m);
+      const end    = new Date(start.getTime() + block.duration * 60 * 1000);
+      const tz     = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      startField   = { dateTime: start.toISOString(), timeZone: tz };
+      endField     = { dateTime: end.toISOString(),   timeZone: tz };
+    } else {
+      const nextDay = new Date(year, month - 1, day + 1);
+      const fmt     = (d) => d.toISOString().slice(0, 10);
+      startField    = { date: fmt(new Date(year, month - 1, day)) };
+      endField      = { date: fmt(nextDay) };
+    }
+
+    try {
+      const res = await fetch(`${CAL_API}/${googleEventId}`, {
+        method:  'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ start: startField, end: endField }),
+      });
+      if (res.status === 401) { accessTokenRef.current = null; updateStatus('idle'); }
+      console.log('[GCal] Event updated ✓', googleEventId, res.status);
+      return res.ok;
+    } catch (e) {
+      console.error('[GCal] update error:', e);
+      return false;
+    }
+  }, []);
+
   /** Delete a Google Calendar event by its event ID */
   const deleteEvent = useCallback(async (googleEventId) => {
     const token = accessTokenRef.current;
@@ -175,6 +215,7 @@ export function useGoogleCalendar() {
     isConfigured: !!CLIENT_ID,
     connect,
     createEvent,
+    updateEvent,
     deleteEvent,
     isReady,
   };
