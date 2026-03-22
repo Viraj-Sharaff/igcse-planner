@@ -146,20 +146,20 @@ function PoolStrip() {
 }
 
 function MobileDayCard({ date }) {
-  const { mode, calendar, schoolDays, toggleSchoolDay } = usePlanner();
+  const { mode, calendar, schoolDays, toggleSchoolDay, todayKey } = usePlanner();
 
   const dateKey = formatDateKey(date);
   const dayLabel = formatDayLabel(date);
-  const dateLabel = formatDateLabel(date);
   const isFirst = date.getDate() === 1;
   const blocks = Array.isArray(calendar[dateKey]) ? calendar[dateKey] : [];
-  const isToday = dateKey === formatDateKey(new Date());
+  const isToday = dateKey === todayKey;
+  const isPast  = dateKey < todayKey;
   const { windowLabel, hasSchool } = getStudyWindow(date, mode, schoolDays);
   const totalMins = blocks.reduce((s,b) => s + (b.duration||0), 0);
   const doneCount = blocks.filter(b => b.done).length;
 
   return (
-    <div className={`mobile-day-card ${isToday ? 'today' : ''} ${blocks.length > 0 ? 'has-blocks' : ''}`}>
+    <div className={`mobile-day-card ${isToday ? 'today' : ''} ${isPast ? 'past-day' : ''} ${blocks.length > 0 ? 'has-blocks' : ''}`}>
       <div className="mobile-day-header">
         <div className="mobile-day-date">
           <span className={`mobile-day-num ${isToday ? 'today-num' : ''}`}>{date.getDate()}</span>
@@ -171,7 +171,7 @@ function MobileDayCard({ date }) {
         <div className="mobile-day-meta">
           {totalMins > 0 && <span className="day-total-time">{totalMins}m</span>}
           {doneCount > 0 && <span className="day-done-badge">✓{doneCount}</span>}
-          {mode === 'pre' && (
+          {!isPast && mode === 'pre' && (
             <button className="school-toggle" onClick={() => toggleSchoolDay(dateKey)}>
               {hasSchool ? '🏫' : '🏠'}
             </button>
@@ -179,7 +179,7 @@ function MobileDayCard({ date }) {
         </div>
       </div>
 
-      <Droppable droppableId={`day-${dateKey}`}>
+      <Droppable droppableId={`day-${dateKey}`} isDropDisabled={isPast}>
         {(provided, snapshot) => (
           <div
             className={`mobile-day-blocks ${snapshot.isDraggingOver ? 'drag-over' : ''} ${blocks.length === 0 ? 'empty' : ''}`}
@@ -187,10 +187,10 @@ function MobileDayCard({ date }) {
             {...provided.droppableProps}
           >
             {blocks.map((block, index) => (
-              <BlockChip key={block.instanceId} block={block} dateKey={dateKey} index={index} />
+              <BlockChip key={block.instanceId} block={block} dateKey={dateKey} index={index} readOnly={isPast} />
             ))}
             {provided.placeholder}
-            {blocks.length === 0 && <span className="drop-hint">drop here</span>}
+            {blocks.length === 0 && !isPast && <span className="drop-hint">drop here</span>}
           </div>
         )}
       </Droppable>
