@@ -188,6 +188,7 @@ export function PlannerProvider({ children }) {
   const gcalPendingDeletes  = useRef(new Set());                // googleEventIds to delete
   const gcalPendingUpdates  = useRef(new Map());                // googleEventId → {dateKey, block}
   const gcalProcessingRef   = useRef(new Set());                // instanceIds being created
+  const gcalMirroredRef     = useRef(false);                    // full mirror done for this session
 
   const queueGcalDelete = useCallback((googleEventId) => {
     if (googleEventId) gcalPendingDeletes.current.add(googleEventId);
@@ -245,20 +246,40 @@ export function PlannerProvider({ children }) {
   useEffect(() => {
     if (!gcal.isReady()) {
       gcalProcessingRef.current.clear();
+      gcalMirroredRef.current = false; // reset so next connect does a fresh mirror
       return;
     }
 
-    // 1. Flush pending deletions
+    // 1. Full mirror on first connect (or reconnect): delete any orphaned GCal events
+    //    that exist in Google Calendar but are no longer in the app.
+    if (!gcalMirroredRef.current) {
+      gcalMirroredRef.current = true;
+      const activeIds = new Set();
+      Object.values(calendar).forEach((blocks) => {
+        if (!Array.isArray(blocks)) return;
+        blocks.forEach((b) => { if (b.googleEventId) activeIds.add(b.googleEventId); });
+      });
+      gcal.listPlannerEvents().then((gcalEvents) => {
+        gcalEvents.forEach((event) => {
+          if (!activeIds.has(event.id)) {
+            console.log('[GCal] Mirror: removing orphaned event', event.summary);
+            gcal.deleteEvent(event.id);
+          }
+        });
+      });
+    }
+
+    // 2. Flush pending deletions
     gcalPendingDeletes.current.forEach((id) => gcal.deleteEvent(id));
     gcalPendingDeletes.current.clear();
 
-    // 2. Flush pending updates (time changes on already-synced blocks)
+    // 3. Flush pending updates (time changes on already-synced blocks)
     gcalPendingUpdates.current.forEach(({ dateKey, block }, eventId) => {
       gcal.updateEvent(eventId, dateKey, block);
     });
     gcalPendingUpdates.current.clear();
 
-    // 2. Create events for blocks that don't have one yet
+    // 4. Create events for blocks that don't have one yet
     const toCreate = [];
     Object.entries(calendar).forEach(([dateKey, blocks]) => {
       if (!Array.isArray(blocks)) return;

@@ -9,7 +9,6 @@ export function useGoogleCalendar() {
   const tokenClientRef        = useRef(null);
   const accessTokenRef        = useRef(null);
   const scriptLoadedRef       = useRef(false);
-  // Ref mirrors status so callbacks always see the latest value without stale closure
   const statusRef             = useRef('idle');
 
   const updateStatus = (s) => { statusRef.current = s; setStatus(s); };
@@ -18,33 +17,35 @@ export function useGoogleCalendar() {
     if (!CLIENT_ID || scriptLoadedRef.current) return;
     scriptLoadedRef.current = true;
 
-    const script   = document.createElement('script');
-    script.src     = 'https://accounts.google.com/gsi/client';
-    script.async   = true;
-    script.defer   = true;
-    script.onload  = () => {
+    const script  = document.createElement('script');
+    script.src    = 'https://accounts.google.com/gsi/client';
+    script.async  = true;
+    script.defer  = true;
+    script.onload = () => {
       tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope:     SCOPES,
         callback:  (resp) => {
           if (resp.error) {
-            // 'access_denied' or real errors — clear auto-connect flag
-            if (resp.error !== 'interaction_required') {
-              localStorage.removeItem('gcal_auto_connect');
+            if (resp.error === 'interaction_required' || resp.error === 'consent_required') {
+              // Silent auth failed — need user to explicitly grant access once.
+              // Fall back to showing the Connect button (idle state).
+              updateStatus('idle');
+            } else {
+              // Real error (access_denied, invalid_client, etc.)
+              console.error('[GCal] OAuth error:', resp.error, resp.error_description);
+              updateStatus('error');
             }
-            console.error('[GCal] OAuth error:', resp.error, resp.error_description);
-            updateStatus('error');
             return;
           }
-          console.log('[GCal] Connected ✓ token length:', resp.access_token?.length);
+          console.log('[GCal] Connected ✓');
           accessTokenRef.current = resp.access_token;
           localStorage.setItem('gcal_auto_connect', '1');
           updateStatus('connected');
-          // Auto-expire slightly before token actually expires, then silently refresh
+          // Silently refresh ~2 min before the token expires
           setTimeout(() => {
             accessTokenRef.current = null;
             updateStatus('idle');
-            // Silent refresh — no popup since user already granted access
             if (tokenClientRef.current) {
               tokenClientRef.current.requestAccessToken({ prompt: '' });
             }
@@ -52,126 +53,81 @@ export function useGoogleCalendar() {
         },
       });
 
-      // Auto-connect silently on page load if user has connected before
-      if (localStorage.getItem('gcal_auto_connect')) {
-        updateStatus('loading');
-        tokenClientRef.current.requestAccessToken({ prompt: '' });
-      }
+      // Always try silent auto-connect on page load.
+      // Works silently if the user has previously granted access.
+      // Falls back to idle (shows Connect button) if interaction is needed.
+      updateStatus('loading');
+      tokenClientRef.current.requestAccessToken({ prompt: '' });
     };
     script.onerror = () => updateStatus('error');
     document.head.appendChild(script);
   }, []);
 
-  /** Prompt Google sign-in / token grant */
+  /** Manually trigger sign-in (e.g. from the Connect button) */
   const connect = useCallback(() => {
-    if (!tokenClientRef.current) {
-      console.warn('[GCal] tokenClient not ready yet');
-      return;
-    }
+    if (!tokenClientRef.current) return;
     updateStatus('loading');
     tokenClientRef.current.requestAccessToken({ prompt: '' });
   }, []);
 
-  /**
-   * Create a Google Calendar event for a study block.
-   * - No startTime set → all-day event (just shows on the day, no time)
-   * - startTime set ("HH:MM" 24h) → timed event starting at that time
-   * Returns the Google event ID or null.
-   */
-  const createEvent = useCallback(async (dateKey, block) => {
-    const token = accessTokenRef.current;
-    if (!token) {
-      console.warn('[GCal] createEvent called but no access token');
-      return null;
-    }
-
+  /** Build the start/end fields for a block (shared by create + update) */
+  function buildTimeFields(dateKey, block) {
     const [year, month, day] = dateKey.split('-').map(Number);
-    const title = block.isTutor
-      ? `📚 Tutor — ${block.label}`
-      : `📖 ${block.subjectName || 'Study'} — ${block.label}`;
-
-    let startField, endField;
-
-    if (block.startTime) {
-      // Timed event: user explicitly set a start time
-      const [h, m]  = block.startTime.split(':').map(Number);
-      const start   = new Date(year, month - 1, day, h, m);
-      const end     = new Date(start.getTime() + block.duration * 60 * 1000);
-      const tz      = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      startField    = { dateTime: start.toISOString(), timeZone: tz };
-      endField      = { dateTime: end.toISOString(),   timeZone: tz };
-    } else {
-      // All-day event — just the date, no time
-      const nextDay = new Date(year, month - 1, day + 1);
-      const fmt     = (d) => d.toISOString().slice(0, 10);
-      startField    = { date: fmt(new Date(year, month - 1, day)) };
-      endField      = { date: fmt(nextDay) };
-    }
-
-    const body = {
-      summary:     title,
-      description: `IGCSE Planner · ${block.duration} min`,
-      start:       startField,
-      end:         endField,
-    };
-
-    console.log('[GCal] Creating event:', title, 'on', dateKey);
-
-    try {
-      const res = await fetch(CAL_API, {
-        method:  'POST',
-        headers: {
-          Authorization:  `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        console.error('[GCal] API error:', res.status, data?.error?.message);
-        // Token expired — reset so user can reconnect
-        if (res.status === 401) {
-          accessTokenRef.current = null;
-          updateStatus('idle');
-        }
-        return null;
-      }
-
-      console.log('[GCal] Event created ✓ id:', data.id);
-      return data.id || null;
-    } catch (e) {
-      console.error('[GCal] fetch error:', e);
-      return null;
-    }
-  }, []);
-
-  /**
-   * Update the start/end time of an existing Google Calendar event (PATCH).
-   * Handles both all-day (date) and timed (dateTime) formats.
-   */
-  const updateEvent = useCallback(async (googleEventId, dateKey, block) => {
-    const token = accessTokenRef.current;
-    if (!token || !googleEventId) return false;
-
-    const [year, month, day] = dateKey.split('-').map(Number);
-    let startField, endField;
-
     if (block.startTime) {
       const [h, m] = block.startTime.split(':').map(Number);
       const start  = new Date(year, month - 1, day, h, m);
       const end    = new Date(start.getTime() + block.duration * 60 * 1000);
       const tz     = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      startField   = { dateTime: start.toISOString(), timeZone: tz };
-      endField     = { dateTime: end.toISOString(),   timeZone: tz };
-    } else {
-      const nextDay = new Date(year, month - 1, day + 1);
-      const fmt     = (d) => d.toISOString().slice(0, 10);
-      startField    = { date: fmt(new Date(year, month - 1, day)) };
-      endField      = { date: fmt(nextDay) };
+      return {
+        startField: { dateTime: start.toISOString(), timeZone: tz },
+        endField:   { dateTime: end.toISOString(),   timeZone: tz },
+      };
     }
+    const nextDay = new Date(year, month - 1, day + 1);
+    const fmt     = (d) => d.toISOString().slice(0, 10);
+    return {
+      startField: { date: fmt(new Date(year, month - 1, day)) },
+      endField:   { date: fmt(nextDay) },
+    };
+  }
 
+  /** Create a Google Calendar event for a study block. Returns event ID or null. */
+  const createEvent = useCallback(async (dateKey, block) => {
+    const token = accessTokenRef.current;
+    if (!token) return null;
+    const { startField, endField } = buildTimeFields(dateKey, block);
+    const title = block.isTutor
+      ? `📚 Tutor — ${block.label}`
+      : `📖 ${block.subjectName || 'Study'} — ${block.label}`;
+    try {
+      const res  = await fetch(CAL_API, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          summary:     title,
+          description: `IGCSE Planner · ${block.duration} min`,
+          start:       startField,
+          end:         endField,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { accessTokenRef.current = null; updateStatus('idle'); }
+        return null;
+      }
+      console.log('[GCal] Created:', title, data.id);
+      return data.id || null;
+    } catch (e) {
+      console.error('[GCal] create error:', e);
+      return null;
+    }
+  }, []);
+
+  /** PATCH start/end time of an existing event (for time changes). */
+  const updateEvent = useCallback(async (googleEventId, dateKey, block) => {
+    const token = accessTokenRef.current;
+    if (!token || !googleEventId) return false;
+    const { startField, endField } = buildTimeFields(dateKey, block);
     try {
       const res = await fetch(`${CAL_API}/${googleEventId}`, {
         method:  'PATCH',
@@ -179,7 +135,7 @@ export function useGoogleCalendar() {
         body:    JSON.stringify({ start: startField, end: endField }),
       });
       if (res.status === 401) { accessTokenRef.current = null; updateStatus('idle'); }
-      console.log('[GCal] Event updated ✓', googleEventId, res.status);
+      console.log('[GCal] Updated:', googleEventId, res.status);
       return res.ok;
     } catch (e) {
       console.error('[GCal] update error:', e);
@@ -187,7 +143,7 @@ export function useGoogleCalendar() {
     }
   }, []);
 
-  /** Delete a Google Calendar event by its event ID */
+  /** Delete a Google Calendar event by ID. */
   const deleteEvent = useCallback(async (googleEventId) => {
     const token = accessTokenRef.current;
     if (!token || !googleEventId) return;
@@ -196,27 +152,51 @@ export function useGoogleCalendar() {
         method:  'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401) {
-        accessTokenRef.current = null;
-        updateStatus('idle');
-      }
-      console.log('[GCal] Event deleted', googleEventId, res.status);
+      if (res.status === 401) { accessTokenRef.current = null; updateStatus('idle'); }
+      console.log('[GCal] Deleted:', googleEventId, res.status);
     } catch (e) {
       console.error('[GCal] delete error:', e);
     }
   }, []);
 
-  /** Check if ready to create events (uses ref, not stale state) */
+  /**
+   * List all events in Google Calendar that were created by this planner.
+   * Used for the full-mirror sync on connect to remove orphaned events.
+   */
+  const listPlannerEvents = useCallback(async () => {
+    const token = accessTokenRef.current;
+    if (!token) return [];
+    try {
+      const timeMin = encodeURIComponent(new Date('2026-01-01T00:00:00Z').toISOString());
+      const timeMax = encodeURIComponent(new Date('2026-07-01T00:00:00Z').toISOString());
+      const res = await fetch(
+        `${CAL_API}?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=2500&singleEvents=true`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      // Identify our events by the description prefix we always write
+      return (data.items || []).filter(
+        (e) => e.description?.startsWith('IGCSE Planner')
+      );
+    } catch (e) {
+      console.error('[GCal] list error:', e);
+      return [];
+    }
+  }, []);
+
+  /** Check if an access token is available (ref-based, avoids stale closures). */
   const isReady = useCallback(() => !!accessTokenRef.current, []);
 
   return {
     status,
-    connected: status === 'connected',
-    isConfigured: !!CLIENT_ID,
+    connected:         status === 'connected',
+    isConfigured:      !!CLIENT_ID,
     connect,
     createEvent,
     updateEvent,
     deleteEvent,
+    listPlannerEvents,
     isReady,
   };
 }
