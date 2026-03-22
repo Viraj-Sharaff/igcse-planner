@@ -11,10 +11,29 @@ const PlannerContext = createContext(null);
 // Date constants
 const TODAY = new Date();
 TODAY.setHours(0, 0, 0, 0);
-const PRE_END = new Date('2026-04-06');
+const TODAY_KEY   = formatDateKey(TODAY);
+const PRE_START   = new Date('2026-03-21'); // show from fixed start so past days stay visible
+const PRE_END     = new Date('2026-04-06');
 const CRUNCH_START = new Date('2026-04-06');
-const CRUNCH_END = new Date('2026-04-27');
-const EXAM_START = new Date('2026-05-05'); // IGCSE May/June 2026 approx start
+const CRUNCH_END   = new Date('2026-04-27');
+const EXAM_START   = new Date('2026-05-05');
+
+// When Firestore echoes data back, preserve any googleEventId values already in local state.
+// This prevents a race condition where the Firestore echo fires before the GCal async
+// createEvent writes back the new event ID, causing the ID to be silently stripped.
+function preserveGcalIds(fsCalendar, localCalendar) {
+  const result = {};
+  Object.keys(fsCalendar).forEach((dk) => {
+    const fsBlocks = fsCalendar[dk];
+    if (!Array.isArray(fsBlocks)) { result[dk] = fsBlocks; return; }
+    const localBlocks = Array.isArray(localCalendar[dk]) ? localCalendar[dk] : [];
+    result[dk] = fsBlocks.map((fb) => {
+      const lb = localBlocks.find((b) => b.instanceId === fb.instanceId);
+      return lb?.googleEventId && !fb.googleEventId ? { ...fb, googleEventId: lb.googleEventId } : fb;
+    });
+  });
+  return result;
+}
 
 export function PlannerProvider({ children }) {
   const [mode, setMode] = useLocalStorage('igcse_mode', 'pre');
@@ -33,21 +52,21 @@ export function PlannerProvider({ children }) {
   const calendar = mode === 'pre' ? calPre : calCrunch;
   const setCalendar = mode === 'pre' ? setCalPre : setCalCrunch;
 
-  // Day ranges
-  const preDays = useMemo(() => {
-    const start = new Date(Math.max(TODAY.getTime(), new Date('2026-03-21').getTime()));
-    return generateDayRange(start, PRE_END);
-  }, []);
+  // Day ranges — pre-leave starts from fixed date so past days stay visible as read-only history
+  const preDays = useMemo(() => generateDayRange(PRE_START, PRE_END), []);
   const crunchDays = useMemo(() => generateDayRange(CRUNCH_START, CRUNCH_END), []);
   const days = mode === 'pre' ? preDays : crunchDays;
 
-  // Computed: placed counts per paperId (across all days, current mode)
+  // Computed: placed counts per paperId.
+  // Past undone blocks are NOT counted — they effectively flow back to the pool.
   const placedCounts = useMemo(() => {
     const counts = {};
-    Object.values(calendar).forEach((dayBlocks) => {
+    Object.entries(calendar).forEach(([dateKey, dayBlocks]) => {
       if (!Array.isArray(dayBlocks)) return;
+      const isPast = dateKey < TODAY_KEY;
       dayBlocks.forEach((block) => {
         if (!block.isTutor && block.paperId) {
+          if (isPast && !block.done) return; // past + undone → back in pool
           counts[block.paperId] = (counts[block.paperId] || 0) + 1;
         }
       });
@@ -313,6 +332,25 @@ export function PlannerProvider({ children }) {
     [setCalendar, queueGcalDelete]
   );
 
+  // ─── Reset all data ──────────────────────────────────────────────────────
+  const clearAllData = useCallback(async () => {
+    const keys = [
+      'igcse_mode', 'igcse_targets_pre', 'igcse_targets_crunch',
+      'igcse_cal_pre', 'igcse_cal_crunch', 'igcse_school', 'gcal_auto_connect',
+    ];
+    keys.forEach((k) => localStorage.removeItem(k));
+    if (db) {
+      try {
+        await setDoc(doc(db, 'planner', 'main'), {
+          targets_pre: {}, targets_crunch: {},
+          cal_pre: {}, cal_crunch: {},
+          school: {}, mode: 'pre',
+        });
+      } catch (e) { console.warn('Firestore reset failed', e); }
+    }
+    window.location.reload();
+  }, []);
+
   // ─── School day management ────────────────────────────────────────────────
 
   const toggleSchoolDay = useCallback(
@@ -415,10 +453,12 @@ export function PlannerProvider({ children }) {
           remoteUpdateRef.current = true;
           if (d.targets_pre    !== undefined) setTargetsPre(d.targets_pre);
           if (d.targets_crunch !== undefined) setTargetsCrunch(d.targets_crunch);
-          if (d.cal_pre        !== undefined) setCalPre(d.cal_pre);
-          if (d.cal_crunch     !== undefined) setCalCrunch(d.cal_crunch);
-          if (d.school         !== undefined) setSchoolDays(d.school);
-          if (d.mode           !== undefined) setMode(d.mode);
+          // Use functional setters so we can preserve googleEventIds that Firestore
+          // doesn't know about (avoids race condition with async GCal writes)
+          if (d.cal_pre    !== undefined) setCalPre((prev) => preserveGcalIds(d.cal_pre, prev));
+          if (d.cal_crunch !== undefined) setCalCrunch((prev) => preserveGcalIds(d.cal_crunch, prev));
+          if (d.school     !== undefined) setSchoolDays(d.school);
+          if (d.mode       !== undefined) setMode(d.mode);
           setSyncStatus('synced');
         }
         // First snapshot received — safe to start writing now
@@ -493,6 +533,8 @@ export function PlannerProvider({ children }) {
     updateStartTime,
     onDragEnd,
     syncStatus,
+    todayKey: TODAY_KEY,
+    clearAllData,
     gcal,
     SUBJECTS,
     TUTORS,

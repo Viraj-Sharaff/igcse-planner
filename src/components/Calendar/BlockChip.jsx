@@ -81,7 +81,7 @@ function TimePopover({ current, anchorRect, onSelect, onClear, onClose }) {
   );
 }
 
-export default function BlockChip({ block, dateKey, index }) {
+export default function BlockChip({ block, dateKey, index, readOnly }) {
   const { toggleDone, updateDuration, updateStartTime, removeBlock } = usePlanner();
   const [editingDur,  setEditingDur]  = useState(false);
   const [durInput,    setDurInput]    = useState(String(block.duration));
@@ -110,27 +110,28 @@ export default function BlockChip({ block, dateKey, index }) {
   }
 
   return (
-    <Draggable draggableId={`cal-${block.instanceId}`} index={index}>
+    <Draggable draggableId={`cal-${block.instanceId}`} index={index} isDragDisabled={readOnly}>
       {(provided, snapshot) => (
         <div
-          className={`block-chip${block.done ? ' done' : ''}${snapshot.isDragging ? ' dragging' : ''}${block.isTutor ? ' tutor-chip' : ''}`}
+          className={`block-chip${block.done ? ' done' : ''}${snapshot.isDragging ? ' dragging' : ''}${block.isTutor ? ' tutor-chip' : ''}${readOnly ? ' read-only' : ''}`}
           ref={provided.innerRef}
           {...provided.draggableProps}
-          {...provided.dragHandleProps}
+          {...(readOnly ? {} : provided.dragHandleProps)}
           style={{ ...chipStyle, ...provided.draggableProps.style }}
         >
-          {/* Checkbox top-left */}
+          {/* Checkbox — visible but disabled in read-only mode */}
           <input
             type="checkbox"
             className="chip-checkbox"
             checked={block.done}
-            onChange={() => toggleDone(dateKey, block.instanceId)}
+            onChange={readOnly ? undefined : () => toggleDone(dateKey, block.instanceId)}
             onClick={e => e.stopPropagation()}
+            readOnly={readOnly}
+            style={readOnly ? { cursor: 'default', opacity: 0.5 } : undefined}
           />
 
           {/* Two-row main content */}
           <div className="chip-main">
-            {/* Row 1: subject/tutor name — gets full width */}
             <div className="chip-row-name">
               {block.isTutor ? (
                 <span className="chip-subject" style={{ color }}>{block.label}</span>
@@ -140,13 +141,13 @@ export default function BlockChip({ block, dateKey, index }) {
               {block.isTutor && <span className="chip-tag tutor-tag">TUTOR</span>}
             </div>
 
-            {/* Row 2: paper · duration · time */}
             <div className="chip-row-meta">
               {!block.isTutor && (
                 <span className="chip-paper-label">{shortLabel(block.label)}</span>
               )}
 
-              {editingDur ? (
+              {/* Duration — editable only on current/future days */}
+              {!readOnly && editingDur ? (
                 <input
                   className="dur-input"
                   value={durInput}
@@ -162,42 +163,51 @@ export default function BlockChip({ block, dateKey, index }) {
               ) : (
                 <button
                   className="dur-btn"
-                  onClick={e => { e.stopPropagation(); setDurInput(String(block.duration)); setEditingDur(true); }}
+                  onClick={readOnly ? undefined : e => { e.stopPropagation(); setDurInput(String(block.duration)); setEditingDur(true); }}
+                  style={readOnly ? { cursor: 'default' } : undefined}
                 >
                   {block.duration}m
                 </button>
               )}
 
-              {/* Time badge / trigger */}
-              <div className="chip-time-wrap" style={{ position: 'relative' }}>
-                <button
-                  className={`time-btn ${block.startTime ? 'has-time' : ''}`}
-                  onClick={e => {
-                    e.stopPropagation();
-                    setAnchorRect(e.currentTarget.getBoundingClientRect());
-                    setShowTimePop(v => !v);
-                  }}
-                >
-                  {block.startTime ? fmt24(block.startTime) : '+ time'}
-                </button>
-                {showTimePop && anchorRect && (
-                  <TimePopover
-                    current={block.startTime || null}
-                    anchorRect={anchorRect}
-                    onSelect={t => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
-                    onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
-                    onClose={() => setShowTimePop(false)}
-                  />
-                )}
-              </div>
+              {/* Time — only shown on current/future days */}
+              {!readOnly && (
+                <div className="chip-time-wrap" style={{ position: 'relative' }}>
+                  <button
+                    className={`time-btn ${block.startTime ? 'has-time' : ''}`}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setAnchorRect(e.currentTarget.getBoundingClientRect());
+                      setShowTimePop(v => !v);
+                    }}
+                  >
+                    {block.startTime ? fmt24(block.startTime) : '+ time'}
+                  </button>
+                  {showTimePop && anchorRect && (
+                    <TimePopover
+                      current={block.startTime || null}
+                      anchorRect={anchorRect}
+                      onSelect={t => { updateStartTime(dateKey, block.instanceId, t); setShowTimePop(false); }}
+                      onClear={() => { updateStartTime(dateKey, block.instanceId, null); setShowTimePop(false); }}
+                      onClose={() => setShowTimePop(false)}
+                    />
+                  )}
+                </div>
+              )}
+              {/* Show time as static text on past days */}
+              {readOnly && block.startTime && (
+                <span className="chip-time-static">{fmt24(block.startTime)}</span>
+              )}
             </div>
           </div>
 
-          {/* Delete — absolute, never in flex flow */}
-          <button
-            className="chip-delete"
-            onClick={e => { e.stopPropagation(); removeBlock(dateKey, block.instanceId); }}
-          >×</button>
+          {/* Delete — hidden on past days */}
+          {!readOnly && (
+            <button
+              className="chip-delete"
+              onClick={e => { e.stopPropagation(); removeBlock(dateKey, block.instanceId); }}
+            >×</button>
+          )}
         </div>
       )}
     </Draggable>

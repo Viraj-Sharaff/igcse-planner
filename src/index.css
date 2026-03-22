@@ -238,6 +238,18 @@ input  { font-family: var(--mono); }
 .sync-ok   { color:var(--green); border-color:rgba(34,197,94,0.2); }
 .sync-err  { color:var(--red);   border-color:rgba(244,63,94,0.2); }
 
+/* Reset button */
+.reset-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.35;
+  padding: 2px 4px;
+  transition: opacity 0.2s;
+}
+.reset-btn:hover { opacity: 0.8; }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SIDEBAR
 ═══════════════════════════════════════════════════════════════════════════ */
@@ -648,6 +660,13 @@ input  { font-family: var(--mono); }
 .block-chip.done { opacity:0.35; filter:grayscale(0.4); }
 .block-chip.done .chip-row-name { text-decoration:line-through; }
 .block-chip.tutor-chip { border-left-style:dashed; }
+.block-chip.read-only { opacity:0.55; cursor:default; }
+.block-chip.read-only:hover { filter:none; transform:none; box-shadow:none; }
+.chip-time-static { font-family:var(--mono); font-size:9px; color:var(--text-muted); }
+
+/* Past day cell */
+.day-cell.past-day { opacity:0.72; }
+.day-cell.past-day .day-num { color:var(--text-muted); }
 
 .chip-checkbox {
   width: 12px; height:12px; flex-shrink:0; margin-top:2px;
