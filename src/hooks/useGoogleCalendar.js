@@ -10,8 +10,17 @@ export function useGoogleCalendar() {
   const accessTokenRef        = useRef(null);
   const scriptLoadedRef       = useRef(false);
   const statusRef             = useRef('idle');
+  const connectTimeoutRef     = useRef(null);
 
-  const updateStatus = (s) => { statusRef.current = s; setStatus(s); };
+  const updateStatus = (s) => {
+    statusRef.current = s;
+    setStatus(s);
+    // Clear any pending connect timeout whenever status changes
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (!CLIENT_ID || scriptLoadedRef.current) return;
@@ -54,9 +63,14 @@ export function useGoogleCalendar() {
       });
 
       // Always try silent auto-connect on page load.
-      // Works silently if the user has previously granted access.
-      // Falls back to idle (shows Connect button) if interaction is needed.
+      // Falls back to idle if interaction is needed or no response in 6s.
       updateStatus('loading');
+      connectTimeoutRef.current = setTimeout(() => {
+        if (statusRef.current === 'loading') {
+          console.warn('[GCal] Silent auth timed out — showing Connect button');
+          updateStatus('idle');
+        }
+      }, 6000);
       tokenClientRef.current.requestAccessToken({ prompt: '' });
     };
     script.onerror = () => updateStatus('error');
