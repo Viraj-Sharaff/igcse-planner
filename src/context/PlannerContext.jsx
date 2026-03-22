@@ -16,7 +16,7 @@ const PRE_START   = new Date('2026-03-21'); // show from fixed start so past day
 const PRE_END     = new Date('2026-04-06');
 const CRUNCH_START = new Date('2026-04-06');
 const CRUNCH_END   = new Date('2026-04-27');
-const EXAM_START   = new Date('2026-05-05');
+const EXAM_START   = new Date('2026-04-27');
 
 // When Firestore echoes data back, preserve any googleEventId values already in local state.
 // This prevents a race condition where the Firestore echo fires before the GCal async
