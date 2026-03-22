@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DragDropContext } from '@hello-pangea/dnd';
 import { PlannerProvider, usePlanner } from './context/PlannerContext';
+import PasswordGate from './components/PasswordGate';
 import { useIsMobile } from './hooks/useIsMobile';
 
 // Desktop components
@@ -67,8 +68,10 @@ function PlannerApp() {
 
 export default function App() {
   return (
-    <PlannerProvider>
-      <PlannerApp />
-    </PlannerProvider>
+    <PasswordGate>
+      <PlannerProvider>
+        <PlannerApp />
+      </PlannerProvider>
+    </PasswordGate>
   );
 }
