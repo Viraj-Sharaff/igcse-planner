@@ -1,8 +1,17 @@
 import { usePlanner } from '../context/PlannerContext';
 import { isConfigured } from '../firebase';
 
+const GCAL_LABEL = {
+  idle:      { text: '+ GCal',      cls: 'gcal-connect'  },
+  loading:   { text: '…',           cls: 'gcal-loading'  },
+  connected: { text: '✓ GCal',      cls: 'gcal-connected'},
+  error:     { text: '✕ Cal',       cls: 'gcal-error'    },
+};
+
 export default function MobileHeader() {
-  const { mode, setMode, daysToStudyLeave, daysToExams, syncStatus } = usePlanner();
+  const { mode, setMode, daysToStudyLeave, daysToExams, syncStatus, gcal } = usePlanner();
+
+  const gcalInfo = GCAL_LABEL[gcal?.status] || GCAL_LABEL.idle;
 
   const syncDot = {
     idle:    { color: 'var(--t4)',    label: '○' },
@@ -36,6 +45,16 @@ export default function MobileHeader() {
       </div>
 
       <div className="mobile-header-right">
+        {gcal?.isConfigured && (
+          <button
+            className={`mobile-gcal-btn ${gcalInfo.cls}`}
+            onClick={gcal.status !== 'connected' ? gcal.connect : undefined}
+            disabled={gcal.status === 'loading'}
+            title={gcal.status === 'connected' ? 'Google Calendar connected' : 'Connect Google Calendar'}
+          >
+            📅{gcal.status === 'connected' ? ' ✓' : gcal.status === 'loading' ? ' …' : ''}
+          </button>
+        )}
         {mode === 'pre' ? (
           <span className="mobile-countdown pre">
             <span className="mobile-countdown-num">{Math.max(0, daysToStudyLeave)}</span>d

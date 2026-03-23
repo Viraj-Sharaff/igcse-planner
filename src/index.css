@@ -954,7 +954,23 @@ input  { font-family: var(--mono); }
   }
 
   .mobile-header-left { display:flex; align-items:center; gap:8px; }
-  .mobile-header-right { display:flex; align-items:center; }
+  .mobile-header-right { display:flex; align-items:center; gap:8px; }
+
+  .mobile-gcal-btn {
+    font-size: 15px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+    line-height: 1;
+    opacity: 0.75;
+    transition: opacity 0.15s;
+  }
+  .mobile-gcal-btn:hover { opacity: 1; }
+  .mobile-gcal-btn.gcal-connected { opacity: 1; }
+  .mobile-gcal-btn.gcal-loading { opacity: 0.4; cursor: not-allowed; animation: pulse 1.5s infinite; }
+  .mobile-gcal-btn.gcal-error { opacity: 1; filter: hue-rotate(300deg); }
 
   .mobile-logo {
     font-size: 16px;
